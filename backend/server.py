@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -40,8 +40,13 @@ class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     email: str
     name: str
-    role: str = "owner"  # owner, staff
+    role: str = "owner"  # owner, manager, waiter
     cafe_id: str
+    pin: Optional[str] = None  # 4-digit PIN for waiters
+    is_active: bool = True
+    device_token: Optional[str] = None  # For device binding
+    last_active: Optional[datetime] = None
+    created_by: Optional[str] = None  # ID of user who created this account
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class UserCreate(BaseModel):
@@ -53,6 +58,29 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     email: str
     password: str
+
+class WaiterCreate(BaseModel):
+    name: str
+    pin: str  # 4-digit PIN
+    cafe_id: str
+
+class WaiterAuth(BaseModel):
+    waiter_id: str
+    pin: str
+    device_id: str  # Unique device identifier
+
+class DeviceSession(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    waiter_id: str
+    device_id: str
+    device_name: str
+    cafe_id: str
+    is_active: bool = True
+    authenticated_by: str  # Master user ID who authenticated
+    authenticated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_activity: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: Optional[datetime] = None  # Optional session expiry
 
 # Cafe Models
 class Cafe(BaseModel):
@@ -151,7 +179,9 @@ class Order(BaseModel):
     subtotal: float
     tax: float = 0
     total: float
-    status: str = "active"  # active, completed, cancelled
+    status: str = "active"  # active, completed, cancelled, pending, preparing, ready
+    waiter_id: Optional[str] = None
+    waiter_name: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -159,6 +189,9 @@ class OrderCreate(BaseModel):
     cafe_id: str
     table_id: Optional[str] = None
     items: List[OrderItem]
+    waiter_id: Optional[str] = None
+    waiter_name: Optional[str] = None
+    status: str = "active"
 
 # Bill Models
 class BillItem(BaseModel):
@@ -290,6 +323,26 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
+# Helper function for authentication dependency
+async def get_current_user(authorization: str = Header(None)):
+    """Get current user from Authorization header"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+    
+    # Extract token from "Bearer <token>" format
+    try:
+        scheme, token = authorization.split()
+        if scheme.lower() != "bearer":
+            raise HTTPException(status_code=401, detail="Invalid authentication scheme")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid authorization header format")
+    
+    user = await db.users.find_one({"id": token})
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    return user
+
 # ============================================
 # AUTH ROUTES
 # ============================================
@@ -333,6 +386,213 @@ async def login(input: UserLogin):
     
     user_obj = User(**user)
     return {"user": user_obj, "token": user_obj.id}
+
+# ============================================
+# WAITER MANAGEMENT ROUTES
+# ============================================
+
+@api_router.post("/waiters", response_model=User)
+async def create_waiter(input: WaiterCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new waiter account (only owners/managers can do this)"""
+    if current_user.get("role") not in ["owner", "manager"]:
+        raise HTTPException(status_code=403, detail="Only owners/managers can create waiters")
+    
+    # Check if waiter with same name exists in this cafe
+    existing_waiter = await db.users.find_one({
+        "name": input.name, 
+        "cafe_id": input.cafe_id,
+        "role": "waiter"
+    })
+    if existing_waiter:
+        raise HTTPException(status_code=400, detail="Waiter with this name already exists")
+    
+    # Validate PIN (4 digits)
+    if not input.pin.isdigit() or len(input.pin) != 4:
+        raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
+    
+    # Create waiter
+    waiter = User(
+        email=f"waiter_{input.name.lower().replace(' ', '_')}@{input.cafe_id}",  # Auto-generated email
+        name=input.name,
+        role="waiter",
+        cafe_id=input.cafe_id,
+        pin=get_password_hash(input.pin),  # Hash the PIN
+        is_active=True,
+        created_by=current_user.get("id")
+    )
+    
+    waiter_dict = waiter.model_dump()
+    waiter_dict['created_at'] = waiter_dict['created_at'].isoformat()
+    
+    await db.users.insert_one(waiter_dict)
+    return waiter
+
+@api_router.get("/waiters", response_model=List[User])
+async def get_waiters(cafe_id: str, current_user: dict = Depends(get_current_user)):
+    """Get all waiters for a cafe"""
+    if current_user.get("role") not in ["owner", "manager"]:
+        raise HTTPException(status_code=403, detail="Only owners/managers can view waiters")
+    
+    waiters = await db.users.find({
+        "cafe_id": cafe_id,
+        "role": "waiter"
+    }, {"_id": 0, "pin": 0}).to_list(1000)  # Exclude PIN from response
+    
+    for waiter in waiters:
+        if isinstance(waiter.get('created_at'), str):
+            waiter['created_at'] = datetime.fromisoformat(waiter['created_at'])
+    
+    return waiters
+
+@api_router.post("/waiters/authenticate")
+async def authenticate_waiter_device(input: WaiterAuth, current_user: dict = Depends(get_current_user)):
+    """Master authenticates a waiter on their device (one-time setup)"""
+    if current_user.get("role") not in ["owner", "manager"]:
+        raise HTTPException(status_code=403, detail="Only owners/managers can authenticate waiters")
+    
+    # Find waiter
+    waiter = await db.users.find_one({"id": input.waiter_id, "role": "waiter"})
+    if not waiter:
+        raise HTTPException(status_code=404, detail="Waiter not found")
+    
+    # Verify PIN
+    if not verify_password(input.pin, waiter.get("pin", "")):
+        raise HTTPException(status_code=401, detail="Invalid PIN")
+    
+    # Check if device is already authenticated
+    existing_session = await db.device_sessions.find_one({
+        "device_id": input.device_id,
+        "is_active": True
+    })
+    
+    if existing_session:
+        # Update existing session
+        await db.device_sessions.update_one(
+            {"id": existing_session["id"]},
+            {
+                "$set": {
+                    "waiter_id": input.waiter_id,
+                    "authenticated_by": current_user.get("id"),
+                    "authenticated_at": datetime.now(timezone.utc).isoformat(),
+                    "last_activity": datetime.now(timezone.utc).isoformat()
+                }
+            }
+        )
+        session_id = existing_session["id"]
+    else:
+        # Create new device session
+        session = DeviceSession(
+            waiter_id=input.waiter_id,
+            device_id=input.device_id,
+            device_name=f"Waiter Device - {waiter['name']}",
+            cafe_id=waiter["cafe_id"],
+            authenticated_by=current_user.get("id")
+        )
+        
+        session_dict = session.model_dump()
+        session_dict['authenticated_at'] = session_dict['authenticated_at'].isoformat()
+        session_dict['last_activity'] = session_dict['last_activity'].isoformat()
+        
+        await db.device_sessions.insert_one(session_dict)
+        session_id = session.id
+    
+    # Update waiter's last active time
+    await db.users.update_one(
+        {"id": input.waiter_id},
+        {"$set": {"last_active": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    return {
+        "success": True,
+        "session_id": session_id,
+        "waiter": {
+            "id": waiter["id"],
+            "name": waiter["name"],
+            "cafe_id": waiter["cafe_id"]
+        },
+        "message": f"Device authenticated for {waiter['name']}"
+    }
+
+@api_router.post("/waiters/login")
+async def waiter_device_login(device_id: str):
+    """Waiter logs in using their authenticated device"""
+    # Find active device session
+    session = await db.device_sessions.find_one({
+        "device_id": device_id,
+        "is_active": True
+    })
+    
+    if not session:
+        raise HTTPException(
+            status_code=401, 
+            detail="Device not authenticated. Please ask your manager to authenticate this device."
+        )
+    
+    # Get waiter details
+    waiter = await db.users.find_one({"id": session["waiter_id"]})
+    if not waiter or not waiter.get("is_active"):
+        raise HTTPException(status_code=401, detail="Waiter account is inactive")
+    
+    # Update last activity
+    await db.device_sessions.update_one(
+        {"id": session["id"]},
+        {"$set": {"last_activity": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    await db.users.update_one(
+        {"id": waiter["id"]},
+        {"$set": {"last_active": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    # Convert datetime strings back to datetime objects
+    if isinstance(waiter.get('created_at'), str):
+        waiter['created_at'] = datetime.fromisoformat(waiter['created_at'])
+    
+    waiter_obj = User(**waiter)
+    return {
+        "user": waiter_obj,
+        "session_id": session["id"],
+        "device_id": device_id
+    }
+
+@api_router.delete("/waiters/{waiter_id}")
+async def deactivate_waiter(waiter_id: str, current_user: dict = Depends(get_current_user)):
+    """Deactivate a waiter account"""
+    if current_user.get("role") not in ["owner", "manager"]:
+        raise HTTPException(status_code=403, detail="Only owners/managers can deactivate waiters")
+    
+    # Deactivate waiter
+    await db.users.update_one(
+        {"id": waiter_id, "role": "waiter"},
+        {"$set": {"is_active": False}}
+    )
+    
+    # Deactivate all device sessions for this waiter
+    await db.device_sessions.update_many(
+        {"waiter_id": waiter_id},
+        {"$set": {"is_active": False}}
+    )
+    
+    return {"message": "Waiter deactivated successfully"}
+
+@api_router.get("/device-sessions", response_model=List[DeviceSession])
+async def get_device_sessions(cafe_id: str, current_user: dict = Depends(get_current_user)):
+    """Get all active device sessions for a cafe"""
+    if current_user.get("role") not in ["owner", "manager"]:
+        raise HTTPException(status_code=403, detail="Only owners/managers can view device sessions")
+    
+    sessions = await db.device_sessions.find({
+        "cafe_id": cafe_id,
+        "is_active": True
+    }, {"_id": 0}).to_list(1000)
+    
+    for session in sessions:
+        if isinstance(session.get('authenticated_at'), str):
+            session['authenticated_at'] = datetime.fromisoformat(session['authenticated_at'])
+        if isinstance(session.get('last_activity'), str):
+            session['last_activity'] = datetime.fromisoformat(session['last_activity'])
+    
+    return sessions
 
 # ============================================
 # MENU ROUTES
@@ -455,7 +715,10 @@ async def create_order(input: OrderCreate):
         items=input.items,
         subtotal=subtotal,
         tax=tax,
-        total=total
+        total=total,
+        status=input.status,
+        waiter_id=input.waiter_id,
+        waiter_name=input.waiter_name
     )
     
     order_dict = order.model_dump()

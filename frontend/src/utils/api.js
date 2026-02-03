@@ -194,3 +194,33 @@ export const printKOT = async (orderId) => {
   const response = await axios.post(`${API}/printer/kot?order_id=${orderId}`);
   return response.data;
 };
+// Waiter Management APIs
+export const getWaiters = async (cafeId) => {
+  const response = await axios.get(`${API}/waiters?cafe_id=${cafeId}`);
+  return response.data;
+};
+
+export const createWaiter = async (data) => {
+  const response = await axios.post(`${API}/waiters`, data);
+  return response.data;
+};
+
+export const authenticateWaiterDevice = async (data) => {
+  const response = await axios.post(`${API}/waiters/authenticate`, data);
+  return response.data;
+};
+
+export const waiterDeviceLogin = async (deviceId) => {
+  const response = await axios.post(`${API}/waiters/login?device_id=${deviceId}`);
+  return response.data;
+};
+
+export const deactivateWaiter = async (waiterId) => {
+  const response = await axios.delete(`${API}/waiters/${waiterId}`);
+  return response.data;
+};
+
+export const getDeviceSessions = async (cafeId) => {
+  const response = await axios.get(`${API}/device-sessions?cafe_id=${cafeId}`);
+  return response.data;
+};
