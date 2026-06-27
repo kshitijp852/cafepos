@@ -109,61 +109,55 @@ A comprehensive Point of Sale (POS) system for restaurants and cafes, inspired b
 
 ## 🚀 **Getting Started**
 
+### **Quick Start (5 minutes)**
+
+⚠️ **IMPORTANT**: Never commit `.env` files to GitHub. This repo includes `.env.example` templates instead.
+
+**See [SETUP.md](./SETUP.md) for complete setup instructions.**
+
+Quick steps:
+```bash
+# 1. Clone and enter directory
+git clone <your-repo-url>
+cd pos
+
+# 2. Copy environment templates and update them
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+
+# 3. Install dependencies
+cd backend && pip install -r requirements.txt
+cd ../frontend && npm install
+
+# 4. Start services (in separate terminals)
+# Terminal 1: Backend
+cd backend && python server.py
+
+# Terminal 2: Frontend
+cd frontend && npm start
+
+# 5. Open browser
+# Frontend: http://localhost:3000
+# Backend: http://localhost:8001/api/health
+```
+
+### **What Your Friend Needs To Do**
+
+1. **Clone the repo** from GitHub
+2. **Copy `.env` files** from `.env.example` templates
+3. **Install dependencies** (Python + Node.js)
+4. **Start MongoDB** (`brew services start mongodb-community@7.0`)
+5. **Run backend** (`python server.py`)
+6. **Run frontend** (`npm start`)
+7. **Register** via the UI or API call
+
 ### **Prerequisites**
-- Python 3.11+
-- Node.js 18+
-- MongoDB
-- Yarn
 
-### **Setup Instructions**
+- **Python 3.9+** - Download from https://www.python.org
+- **Node.js 18+** - Download from https://nodejs.org
+- **MongoDB** - Install via `brew install mongodb-community` (macOS) or download from https://www.mongodb.com
 
-#### 1. **Backend Setup**
-```bash
-cd /app/backend
-
-# Environment is already configured with:
-# - MONGO_URL
-# - DB_NAME
-# - CORS_ORIGINS
-
-# Dependencies are already installed
-# Server runs on: http://0.0.0.0:8001
-```
-
-#### 2. **Frontend Setup**
-```bash
-cd /app/frontend
-
-# Environment is already configured with:
-# - REACT_APP_BACKEND_URL
-
-# Dependencies are already installed
-# App runs on: http://0.0.0.0:3000
-```
-
-#### 3. **Start Services**
-```bash
-# Both services are managed by supervisor
-sudo supervisorctl status
-
-# Restart if needed
-sudo supervisorctl restart backend
-sudo supervisorctl restart frontend
-sudo supervisorctl restart all
-```
-
-#### 4. **Initialize Sample Data** (Optional)
-```bash
-cd /app/backend
-python setup_sample_data.py
-```
-
-This will create:
-- 4 menu categories
-- 16 menu items (beverages, food, desserts, snacks)
-- 2 floors (Ground & First Floor)
-- 9 tables (various capacities)
-- 5 inventory items
+See [SETUP.md](./SETUP.md) for detailed OS-specific instructions.
 
 ---
 

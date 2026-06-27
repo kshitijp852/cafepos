@@ -8,10 +8,11 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 import hashlib
 import json
 from passlib.context import CryptContext
+import jwt
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -23,6 +24,11 @@ db = client[os.environ['DB_NAME']]
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# JWT config — read secret from env, fall back to a dev default
+JWT_SECRET = os.environ.get("JWT_SECRET", "change-me-in-production-use-a-long-random-string")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_HOURS = 24
 
 # Create the main app without a prefix
 app = FastAPI()
@@ -40,13 +46,13 @@ class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     email: str
     name: str
-    role: str = "owner"  # owner, manager, waiter
+    role: str = "owner"  # superadmin, owner, staff
     cafe_id: str
-    pin: Optional[str] = None  # 4-digit PIN for waiters
+    pin: Optional[str] = None  # 4-digit PIN for staff/waiters
     is_active: bool = True
-    device_token: Optional[str] = None  # For device binding
+    device_token: Optional[str] = None
     last_active: Optional[datetime] = None
-    created_by: Optional[str] = None  # ID of user who created this account
+    created_by: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class UserCreate(BaseModel):
@@ -63,6 +69,7 @@ class WaiterCreate(BaseModel):
     name: str
     pin: str  # 4-digit PIN
     cafe_id: str
+    role: str = "staff"  # staff or owner
 
 class WaiterAuth(BaseModel):
     waiter_id: str
@@ -102,7 +109,6 @@ class Category(BaseModel):
 
 class CategoryCreate(BaseModel):
     name: str
-    cafe_id: str
 
 # Menu Item Models
 class MenuItem(BaseModel):
@@ -126,7 +132,6 @@ class MenuItemCreate(BaseModel):
     description: Optional[str] = None
     image_url: Optional[str] = None
     available: bool = True
-    cafe_id: str
     variants: Optional[List[Dict[str, Any]]] = []
     addons: Optional[List[Dict[str, Any]]] = []
 
@@ -323,25 +328,58 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
-# Helper function for authentication dependency
-async def get_current_user(authorization: str = Header(None)):
-    """Get current user from Authorization header"""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header required")
-    
-    # Extract token from "Bearer <token>" format
+# ============================================
+# JWT UTILITIES
+# ============================================
+
+def create_access_token(user_id: str, cafe_id: str, role: str) -> str:
+    """Create a signed JWT with user_id, cafe_id, role and 24hr expiry."""
+    payload = {
+        "user_id": user_id,
+        "cafe_id": cafe_id,
+        "role": role,
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRY_HOURS),
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+def decode_access_token(token: str) -> dict:
+    """Decode and validate a JWT. Raises HTTPException on failure."""
     try:
-        scheme, token = authorization.split()
-        if scheme.lower() != "bearer":
-            raise HTTPException(status_code=401, detail="Invalid authentication scheme")
-    except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid authorization header format")
-    
-    user = await db.users.find_one({"id": token})
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
-    return user
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired. Please log in again.")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token.")
+
+async def get_current_user(authorization: str = Header(None)) -> dict:
+    """FastAPI dependency — decodes JWT and returns the user payload."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required.")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Authorization header must be 'Bearer <token>'.")
+    payload = decode_access_token(parts[1])
+    # Verify user still exists and is active
+    user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0})
+    if not user or not user.get("is_active"):
+        raise HTTPException(status_code=401, detail="User not found or deactivated.")
+    return payload  # returns {"user_id", "cafe_id", "role", "exp", "iat"}
+
+def require_role(allowed_roles: List[str]):
+    """
+    FastAPI dependency factory for role-based access control.
+    Usage: Depends(require_role(["owner", "superadmin"]))
+    """
+    async def role_checker(current_user: dict = Depends(get_current_user)):
+        if current_user["role"] not in allowed_roles:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied. Required roles: {allowed_roles}. Your role: {current_user['role']}"
+            )
+        return current_user
+    return role_checker
 
 # ============================================
 # AUTH ROUTES
@@ -380,45 +418,51 @@ async def login(input: UserLogin):
     if not user or not verify_password(input.password, user.get("password", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=403, detail="Account is deactivated.")
+
     # Convert datetime strings back to datetime objects
     if isinstance(user.get('created_at'), str):
         user['created_at'] = datetime.fromisoformat(user['created_at'])
     
     user_obj = User(**user)
-    return {"user": user_obj, "token": user_obj.id}
+    token = create_access_token(
+        user_id=user_obj.id,
+        cafe_id=user_obj.cafe_id,
+        role=user_obj.role
+    )
+    return {"user": user_obj, "token": token}
 
 # ============================================
 # WAITER MANAGEMENT ROUTES
 # ============================================
 
 @api_router.post("/waiters", response_model=User)
-async def create_waiter(input: WaiterCreate, current_user: dict = Depends(get_current_user)):
-    """Create a new waiter account (only owners/managers can do this)"""
-    if current_user.get("role") not in ["owner", "manager"]:
-        raise HTTPException(status_code=403, detail="Only owners/managers can create waiters")
+async def create_waiter(input: WaiterCreate, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Create a new staff account (only owners/superadmins can do this)"""
     
     # Check if waiter with same name exists in this cafe
     existing_waiter = await db.users.find_one({
         "name": input.name, 
         "cafe_id": input.cafe_id,
-        "role": "waiter"
+        "role": "staff"
     })
     if existing_waiter:
-        raise HTTPException(status_code=400, detail="Waiter with this name already exists")
+        raise HTTPException(status_code=400, detail="Staff member with this name already exists")
     
     # Validate PIN (4 digits)
     if not input.pin.isdigit() or len(input.pin) != 4:
         raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
     
-    # Create waiter
+    # Create staff member
     waiter = User(
-        email=f"waiter_{input.name.lower().replace(' ', '_')}@{input.cafe_id}",  # Auto-generated email
+        email=f"staff_{input.name.lower().replace(' ', '_')}@{input.cafe_id}",
         name=input.name,
-        role="waiter",
+        role=input.role,
         cafe_id=input.cafe_id,
-        pin=get_password_hash(input.pin),  # Hash the PIN
+        pin=get_password_hash(input.pin),
         is_active=True,
-        created_by=current_user.get("id")
+        created_by=current_user.get("user_id")
     )
     
     waiter_dict = waiter.model_dump()
@@ -428,15 +472,12 @@ async def create_waiter(input: WaiterCreate, current_user: dict = Depends(get_cu
     return waiter
 
 @api_router.get("/waiters", response_model=List[User])
-async def get_waiters(cafe_id: str, current_user: dict = Depends(get_current_user)):
-    """Get all waiters for a cafe"""
-    if current_user.get("role") not in ["owner", "manager"]:
-        raise HTTPException(status_code=403, detail="Only owners/managers can view waiters")
-    
+async def get_waiters(cafe_id: str, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Get all staff for a cafe"""
     waiters = await db.users.find({
         "cafe_id": cafe_id,
-        "role": "waiter"
-    }, {"_id": 0, "pin": 0}).to_list(1000)  # Exclude PIN from response
+        "role": {"$in": ["staff", "waiter"]}  # support legacy "waiter" role
+    }, {"_id": 0, "pin": 0}).to_list(1000)
     
     for waiter in waiters:
         if isinstance(waiter.get('created_at'), str):
@@ -445,13 +486,11 @@ async def get_waiters(cafe_id: str, current_user: dict = Depends(get_current_use
     return waiters
 
 @api_router.post("/waiters/authenticate")
-async def authenticate_waiter_device(input: WaiterAuth, current_user: dict = Depends(get_current_user)):
-    """Master authenticates a waiter on their device (one-time setup)"""
-    if current_user.get("role") not in ["owner", "manager"]:
-        raise HTTPException(status_code=403, detail="Only owners/managers can authenticate waiters")
+async def authenticate_waiter_device(input: WaiterAuth, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Master authenticates a staff member on their device (one-time setup)"""
     
-    # Find waiter
-    waiter = await db.users.find_one({"id": input.waiter_id, "role": "waiter"})
+    # Find waiter/staff
+    waiter = await db.users.find_one({"id": input.waiter_id, "role": {"$in": ["staff", "waiter"]}})
     if not waiter:
         raise HTTPException(status_code=404, detail="Waiter not found")
     
@@ -472,7 +511,7 @@ async def authenticate_waiter_device(input: WaiterAuth, current_user: dict = Dep
             {
                 "$set": {
                     "waiter_id": input.waiter_id,
-                    "authenticated_by": current_user.get("id"),
+                    "authenticated_by": current_user.get("user_id"),
                     "authenticated_at": datetime.now(timezone.utc).isoformat(),
                     "last_activity": datetime.now(timezone.utc).isoformat()
                 }
@@ -484,9 +523,9 @@ async def authenticate_waiter_device(input: WaiterAuth, current_user: dict = Dep
         session = DeviceSession(
             waiter_id=input.waiter_id,
             device_id=input.device_id,
-            device_name=f"Waiter Device - {waiter['name']}",
+            device_name=f"Staff Device - {waiter['name']}",
             cafe_id=waiter["cafe_id"],
-            authenticated_by=current_user.get("id")
+            authenticated_by=current_user.get("user_id")
         )
         
         session_dict = session.model_dump()
@@ -556,10 +595,8 @@ async def waiter_device_login(device_id: str):
     }
 
 @api_router.delete("/waiters/{waiter_id}")
-async def deactivate_waiter(waiter_id: str, current_user: dict = Depends(get_current_user)):
-    """Deactivate a waiter account"""
-    if current_user.get("role") not in ["owner", "manager"]:
-        raise HTTPException(status_code=403, detail="Only owners/managers can deactivate waiters")
+async def deactivate_waiter(waiter_id: str, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Deactivate a staff account"""
     
     # Deactivate waiter
     await db.users.update_one(
@@ -576,10 +613,8 @@ async def deactivate_waiter(waiter_id: str, current_user: dict = Depends(get_cur
     return {"message": "Waiter deactivated successfully"}
 
 @api_router.get("/device-sessions", response_model=List[DeviceSession])
-async def get_device_sessions(cafe_id: str, current_user: dict = Depends(get_current_user)):
+async def get_device_sessions(cafe_id: str, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
     """Get all active device sessions for a cafe"""
-    if current_user.get("role") not in ["owner", "manager"]:
-        raise HTTPException(status_code=403, detail="Only owners/managers can view device sessions")
     
     sessions = await db.device_sessions.find({
         "cafe_id": cafe_id,
@@ -599,7 +634,9 @@ async def get_device_sessions(cafe_id: str, current_user: dict = Depends(get_cur
 # ============================================
 
 @api_router.get("/menu/categories", response_model=List[Category])
-async def get_categories(cafe_id: str):
+async def get_categories(current_user: dict = Depends(get_current_user)):
+    """List categories scoped to the caller's cafe_id from JWT."""
+    cafe_id = current_user["cafe_id"]
     categories = await db.categories.find({"cafe_id": cafe_id}, {"_id": 0}).to_list(1000)
     for cat in categories:
         if isinstance(cat.get('created_at'), str):
@@ -607,15 +644,46 @@ async def get_categories(cafe_id: str):
     return categories
 
 @api_router.post("/menu/categories", response_model=Category)
-async def create_category(input: CategoryCreate):
-    category = Category(**input.model_dump())
+async def create_category(input: CategoryCreate, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Create a category — cafe_id is always taken from JWT, never from the request body."""
+    category = Category(name=input.name, cafe_id=current_user["cafe_id"])
     cat_dict = category.model_dump()
     cat_dict['created_at'] = cat_dict['created_at'].isoformat()
     await db.categories.insert_one(cat_dict)
     return category
 
+@api_router.put("/menu/categories/{category_id}", response_model=Category)
+async def update_category(category_id: str, input: CategoryCreate, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Update a category — verifies it belongs to the caller's cafe before updating."""
+    existing = await db.categories.find_one({"id": category_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Category not found.")
+    if existing["cafe_id"] != current_user["cafe_id"]:
+        raise HTTPException(status_code=403, detail="You do not have access to this category.")
+    await db.categories.update_one(
+        {"id": category_id},
+        {"$set": {"name": input.name}}
+    )
+    updated = await db.categories.find_one({"id": category_id}, {"_id": 0})
+    if isinstance(updated.get('created_at'), str):
+        updated['created_at'] = datetime.fromisoformat(updated['created_at'])
+    return Category(**updated)
+
+@api_router.delete("/menu/categories/{category_id}")
+async def delete_category(category_id: str, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Delete a category — verifies it belongs to the caller's cafe before deleting."""
+    existing = await db.categories.find_one({"id": category_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Category not found.")
+    if existing["cafe_id"] != current_user["cafe_id"]:
+        raise HTTPException(status_code=403, detail="You do not have access to this category.")
+    await db.categories.delete_one({"id": category_id})
+    return {"message": "Category deleted successfully."}
+
 @api_router.get("/menu/items", response_model=List[MenuItem])
-async def get_menu_items(cafe_id: str):
+async def get_menu_items(current_user: dict = Depends(get_current_user)):
+    """List menu items scoped to the caller's cafe_id from JWT."""
+    cafe_id = current_user["cafe_id"]
     items = await db.menu_items.find({"cafe_id": cafe_id}, {"_id": 0}).to_list(1000)
     for item in items:
         if isinstance(item.get('created_at'), str):
@@ -623,16 +691,30 @@ async def get_menu_items(cafe_id: str):
     return items
 
 @api_router.post("/menu/items", response_model=MenuItem)
-async def create_menu_item(input: MenuItemCreate):
-    item = MenuItem(**input.model_dump())
+async def create_menu_item(input: MenuItemCreate, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Create a menu item — cafe_id is always taken from JWT."""
+    # Verify the category belongs to this cafe
+    category = await db.categories.find_one({"id": input.category_id, "cafe_id": current_user["cafe_id"]})
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found in your cafe.")
+    item_data = input.model_dump()
+    item_data["cafe_id"] = current_user["cafe_id"]  # always override with JWT cafe_id
+    item = MenuItem(**item_data)
     item_dict = item.model_dump()
     item_dict['created_at'] = item_dict['created_at'].isoformat()
     await db.menu_items.insert_one(item_dict)
     return item
 
 @api_router.put("/menu/items/{item_id}", response_model=MenuItem)
-async def update_menu_item(item_id: str, input: MenuItemCreate):
+async def update_menu_item(item_id: str, input: MenuItemCreate, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Update a menu item — verifies it belongs to the caller's cafe."""
+    existing = await db.menu_items.find_one({"id": item_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Menu item not found.")
+    if existing["cafe_id"] != current_user["cafe_id"]:
+        raise HTTPException(status_code=403, detail="You do not have access to this menu item.")
     item_dict = input.model_dump()
+    item_dict["cafe_id"] = current_user["cafe_id"]  # prevent cafe_id tampering
     await db.menu_items.update_one({"id": item_id}, {"$set": item_dict})
     updated_item = await db.menu_items.find_one({"id": item_id}, {"_id": 0})
     if isinstance(updated_item.get('created_at'), str):
@@ -640,16 +722,24 @@ async def update_menu_item(item_id: str, input: MenuItemCreate):
     return MenuItem(**updated_item)
 
 @api_router.delete("/menu/items/{item_id}")
-async def delete_menu_item(item_id: str):
+async def delete_menu_item(item_id: str, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Delete a menu item — verifies it belongs to the caller's cafe."""
+    existing = await db.menu_items.find_one({"id": item_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Menu item not found.")
+    if existing["cafe_id"] != current_user["cafe_id"]:
+        raise HTTPException(status_code=403, detail="You do not have access to this menu item.")
     await db.menu_items.delete_one({"id": item_id})
-    return {"message": "Item deleted successfully"}
+    return {"message": "Item deleted successfully."}
 
 # ============================================
 # TABLE & FLOOR ROUTES
 # ============================================
 
 @api_router.get("/floors", response_model=List[Floor])
-async def get_floors(cafe_id: str):
+async def get_floors(current_user: dict = Depends(get_current_user)):
+    """Get all floors for the user's cafe (scoped by JWT)."""
+    cafe_id = current_user["cafe_id"]
     floors = await db.floors.find({"cafe_id": cafe_id}, {"_id": 0}).to_list(1000)
     for floor in floors:
         if isinstance(floor.get('created_at'), str):
@@ -657,15 +747,18 @@ async def get_floors(cafe_id: str):
     return floors
 
 @api_router.post("/floors", response_model=Floor)
-async def create_floor(input: FloorCreate):
-    floor = Floor(**input.model_dump())
+async def create_floor(input: FloorCreate, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Create a floor — cafe_id is always taken from JWT."""
+    floor = Floor(name=input.name, cafe_id=current_user["cafe_id"])
     floor_dict = floor.model_dump()
     floor_dict['created_at'] = floor_dict['created_at'].isoformat()
     await db.floors.insert_one(floor_dict)
     return floor
 
 @api_router.get("/tables", response_model=List[Table])
-async def get_tables(cafe_id: str):
+async def get_tables(current_user: dict = Depends(get_current_user)):
+    """Get all tables for the user's cafe (scoped by JWT)."""
+    cafe_id = current_user["cafe_id"]
     tables = await db.tables.find({"cafe_id": cafe_id}, {"_id": 0}).to_list(1000)
     for table in tables:
         if isinstance(table.get('created_at'), str):
@@ -673,16 +766,26 @@ async def get_tables(cafe_id: str):
     return tables
 
 @api_router.post("/tables", response_model=Table)
-async def create_table(input: TableCreate):
-    table = Table(**input.model_dump())
+async def create_table(input: TableCreate, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Create a table — cafe_id is always taken from JWT."""
+    table = Table(name=input.name, floor_id=input.floor_id, capacity=input.capacity, cafe_id=current_user["cafe_id"])
     table_dict = table.model_dump()
     table_dict['created_at'] = table_dict['created_at'].isoformat()
     await db.tables.insert_one(table_dict)
     return table
 
 @api_router.put("/tables/{table_id}", response_model=Table)
-async def update_table(table_id: str, updates: Dict[str, Any]):
-    await db.tables.update_one({"id": table_id}, {"$set": updates})
+async def update_table(table_id: str, updates: Dict[str, Any], current_user: dict = Depends(get_current_user)):
+    """Update a table — verifies it belongs to the user's cafe."""
+    existing = await db.tables.find_one({"id": table_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Table not found.")
+    if existing["cafe_id"] != current_user["cafe_id"]:
+        raise HTTPException(status_code=403, detail="You do not have access to this table.")
+    # Prevent cafe_id tampering
+    updates_copy = dict(updates)
+    updates_copy.pop("cafe_id", None)
+    await db.tables.update_one({"id": table_id}, {"$set": updates_copy})
     updated_table = await db.tables.find_one({"id": table_id}, {"_id": 0})
     if isinstance(updated_table.get('created_at'), str):
         updated_table['created_at'] = datetime.fromisoformat(updated_table['created_at'])
@@ -693,7 +796,9 @@ async def update_table(table_id: str, updates: Dict[str, Any]):
 # ============================================
 
 @api_router.get("/orders", response_model=List[Order])
-async def get_orders(cafe_id: str, status: str = "active"):
+async def get_orders(status: str = "active", current_user: dict = Depends(get_current_user)):
+    """Get orders for the user's cafe (scoped by JWT)."""
+    cafe_id = current_user["cafe_id"]
     orders = await db.orders.find({"cafe_id": cafe_id, "status": status}, {"_id": 0}).to_list(1000)
     for order in orders:
         if isinstance(order.get('created_at'), str):
@@ -703,14 +808,15 @@ async def get_orders(cafe_id: str, status: str = "active"):
     return orders
 
 @api_router.post("/orders", response_model=Order)
-async def create_order(input: OrderCreate):
+async def create_order(input: OrderCreate, current_user: dict = Depends(get_current_user)):
+    """Create an order — cafe_id is always taken from JWT."""
     # Calculate totals
     subtotal = sum(item.price * item.quantity for item in input.items)
     tax = subtotal * 0.05  # 5% GST
     total = subtotal + tax
     
     order = Order(
-        cafe_id=input.cafe_id,
+        cafe_id=current_user["cafe_id"],  # Always use JWT cafe_id
         table_id=input.table_id,
         items=input.items,
         subtotal=subtotal,
@@ -737,7 +843,14 @@ async def create_order(input: OrderCreate):
     return order
 
 @api_router.put("/orders/{order_id}", response_model=Order)
-async def update_order(order_id: str, input: OrderCreate):
+async def update_order(order_id: str, input: OrderCreate, current_user: dict = Depends(get_current_user)):
+    """Update an order — verifies it belongs to the user's cafe."""
+    existing = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Order not found.")
+    if existing["cafe_id"] != current_user["cafe_id"]:
+        raise HTTPException(status_code=403, detail="You do not have access to this order.")
+    
     subtotal = sum(item.price * item.quantity for item in input.items)
     tax = subtotal * 0.05
     total = subtotal + tax
@@ -759,9 +872,15 @@ async def update_order(order_id: str, input: OrderCreate):
     return Order(**updated_order)
 
 @api_router.delete("/orders/{order_id}")
-async def cancel_order(order_id: str):
+async def cancel_order(order_id: str, current_user: dict = Depends(get_current_user)):
+    """Cancel an order — verifies it belongs to the user's cafe."""
     order = await db.orders.find_one({"id": order_id})
-    if order and order.get("table_id"):
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found.")
+    if order["cafe_id"] != current_user["cafe_id"]:
+        raise HTTPException(status_code=403, detail="You do not have access to this order.")
+    
+    if order.get("table_id"):
         await db.tables.update_one(
             {"id": order["table_id"]},
             {"$set": {"status": "available", "current_order_id": None}}
@@ -775,14 +894,15 @@ async def cancel_order(order_id: str):
 # ============================================
 
 @api_router.post("/bills", response_model=Bill)
-async def create_bill(input: BillCreate):
+async def create_bill(input: BillCreate, current_user: dict = Depends(get_current_user)):
+    """Create a bill — cafe_id is always taken from JWT."""
     # Calculate totals
     subtotal = sum(item.price * item.quantity for item in input.items)
     tax = subtotal * (input.tax_percentage / 100)
     total = subtotal + tax
     
     # Get next bill number
-    bill_number = await get_next_bill_number(input.cafe_id)
+    bill_number = await get_next_bill_number(current_user["cafe_id"])
     
     # Create timestamp
     timestamp = datetime.now(timezone.utc)
@@ -792,7 +912,7 @@ async def create_bill(input: BillCreate):
     
     bill = Bill(
         bill_number=bill_number,
-        cafe_id=input.cafe_id,
+        cafe_id=current_user["cafe_id"],  # Always use JWT cafe_id
         table_id=input.table_id,
         items=input.items,
         subtotal=subtotal,
@@ -827,7 +947,7 @@ async def create_bill(input: BillCreate):
     
     # Update day session
     today = date.today().isoformat()
-    session = await db.day_sessions.find_one({"cafe_id": input.cafe_id, "session_date": today, "status": "open"})
+    session = await db.day_sessions.find_one({"cafe_id": current_user["cafe_id"], "session_date": today, "status": "open"})
     if session:
         await db.day_sessions.update_one(
             {"id": session["id"]},
@@ -840,7 +960,9 @@ async def create_bill(input: BillCreate):
     return bill
 
 @api_router.get("/bills", response_model=List[Bill])
-async def get_bills(cafe_id: str, limit: int = 100, date_filter: Optional[str] = None):
+async def get_bills(limit: int = 100, date_filter: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Get bills for the user's cafe (scoped by JWT)."""
+    cafe_id = current_user["cafe_id"]
     query = {"cafe_id": cafe_id, "soft_deleted": False}
     
     if date_filter:
@@ -858,10 +980,13 @@ async def get_bills(cafe_id: str, limit: int = 100, date_filter: Optional[str] =
     return bills
 
 @api_router.get("/bills/{bill_id}", response_model=Bill)
-async def get_bill(bill_id: str):
+async def get_bill(bill_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a specific bill — verifies it belongs to the user's cafe."""
     bill = await db.bills.find_one({"id": bill_id, "soft_deleted": False}, {"_id": 0})
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
+    if bill["cafe_id"] != current_user["cafe_id"]:
+        raise HTTPException(status_code=403, detail="You do not have access to this bill.")
     
     if isinstance(bill.get('created_at'), str):
         bill['created_at'] = datetime.fromisoformat(bill['created_at'])
@@ -873,7 +998,9 @@ async def get_bill(bill_id: str):
 # ============================================
 
 @api_router.get("/reservations", response_model=List[Reservation])
-async def get_reservations(cafe_id: str, date_filter: Optional[str] = None):
+async def get_reservations(date_filter: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Get reservations for the user's cafe (scoped by JWT)."""
+    cafe_id = current_user["cafe_id"]
     query = {"cafe_id": cafe_id}
     if date_filter:
         query["reservation_date"] = date_filter
@@ -885,8 +1012,18 @@ async def get_reservations(cafe_id: str, date_filter: Optional[str] = None):
     return reservations
 
 @api_router.post("/reservations", response_model=Reservation)
-async def create_reservation(input: ReservationCreate):
-    reservation = Reservation(**input.model_dump())
+async def create_reservation(input: ReservationCreate, current_user: dict = Depends(get_current_user)):
+    """Create a reservation — cafe_id is always taken from JWT."""
+    reservation = Reservation(
+        cafe_id=current_user["cafe_id"],  # Always use JWT cafe_id
+        table_id=input.table_id,
+        customer_name=input.customer_name,
+        customer_phone=input.customer_phone,
+        guest_count=input.guest_count,
+        reservation_date=input.reservation_date,
+        reservation_time=input.reservation_time,
+        notes=input.notes
+    )
     res_dict = reservation.model_dump()
     res_dict['created_at'] = res_dict['created_at'].isoformat()
     await db.reservations.insert_one(res_dict)
@@ -900,16 +1037,31 @@ async def create_reservation(input: ReservationCreate):
     return reservation
 
 @api_router.put("/reservations/{reservation_id}", response_model=Reservation)
-async def update_reservation(reservation_id: str, updates: Dict[str, Any]):
-    await db.reservations.update_one({"id": reservation_id}, {"$set": updates})
+async def update_reservation(reservation_id: str, updates: Dict[str, Any], current_user: dict = Depends(get_current_user)):
+    """Update a reservation — verifies it belongs to the user's cafe."""
+    existing = await db.reservations.find_one({"id": reservation_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Reservation not found.")
+    if existing["cafe_id"] != current_user["cafe_id"]:
+        raise HTTPException(status_code=403, detail="You do not have access to this reservation.")
+    # Prevent cafe_id tampering
+    updates_copy = dict(updates)
+    updates_copy.pop("cafe_id", None)
+    await db.reservations.update_one({"id": reservation_id}, {"$set": updates_copy})
     updated_res = await db.reservations.find_one({"id": reservation_id}, {"_id": 0})
     if isinstance(updated_res.get('created_at'), str):
         updated_res['created_at'] = datetime.fromisoformat(updated_res['created_at'])
     return Reservation(**updated_res)
 
 @api_router.delete("/reservations/{reservation_id}")
-async def cancel_reservation(reservation_id: str):
+async def cancel_reservation(reservation_id: str, current_user: dict = Depends(get_current_user)):
+    """Cancel a reservation — verifies it belongs to the user's cafe."""
     reservation = await db.reservations.find_one({"id": reservation_id})
+    if not reservation:
+        raise HTTPException(status_code=404, detail="Reservation not found.")
+    if reservation["cafe_id"] != current_user["cafe_id"]:
+        raise HTTPException(status_code=403, detail="You do not have access to this reservation.")
+    
     if reservation:
         await db.tables.update_one(
             {"id": reservation["table_id"]},
@@ -927,7 +1079,9 @@ async def cancel_reservation(reservation_id: str):
 # ============================================
 
 @api_router.get("/sessions/current")
-async def get_current_session(cafe_id: str):
+async def get_current_session(current_user: dict = Depends(get_current_user)):
+    """Get current day session for the user's cafe."""
+    cafe_id = current_user["cafe_id"]
     today = date.today().isoformat()
     session = await db.day_sessions.find_one(
         {"cafe_id": cafe_id, "session_date": today, "status": "open"},
@@ -944,18 +1098,20 @@ async def get_current_session(cafe_id: str):
     return None
 
 @api_router.post("/sessions/open", response_model=DaySession)
-async def open_day_session(input: DaySessionOpen):
+async def open_day_session(input: DaySessionOpen, current_user: dict = Depends(get_current_user)):
+    """Open a day session — cafe_id is always taken from JWT."""
+    cafe_id = current_user["cafe_id"]
     today = date.today().isoformat()
     
     # Check if session already open
     existing = await db.day_sessions.find_one(
-        {"cafe_id": input.cafe_id, "session_date": today, "status": "open"}
+        {"cafe_id": cafe_id, "session_date": today, "status": "open"}
     )
     if existing:
         raise HTTPException(status_code=400, detail="Session already open for today")
     
     session = DaySession(
-        cafe_id=input.cafe_id,
+        cafe_id=cafe_id,
         session_date=today,
         opening_cash=input.opening_cash,
         expected_cash=input.opening_cash
@@ -968,11 +1124,14 @@ async def open_day_session(input: DaySessionOpen):
     return session
 
 @api_router.post("/sessions/close", response_model=DaySession)
-async def close_day_session(input: DaySessionClose):
+async def close_day_session(input: DaySessionClose, current_user: dict = Depends(get_current_user)):
+    """Close a day session — verifies it belongs to the user's cafe."""
     session = await db.day_sessions.find_one({"id": input.session_id}, {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+    if session["cafe_id"] != current_user["cafe_id"]:
+        raise HTTPException(status_code=403, detail="You do not have access to this session.")
+
     if session["status"] == "closed":
         raise HTTPException(status_code=400, detail="Session already closed")
     
@@ -993,7 +1152,9 @@ async def close_day_session(input: DaySessionClose):
     return DaySession(**updated_session)
 
 @api_router.get("/sessions/history", response_model=List[DaySession])
-async def get_session_history(cafe_id: str):
+async def get_session_history(current_user: dict = Depends(get_current_user)):
+    """Get session history for the user's cafe."""
+    cafe_id = current_user["cafe_id"]
     sessions = await db.day_sessions.find(
         {"cafe_id": cafe_id},
         {"_id": 0}
@@ -1012,7 +1173,9 @@ async def get_session_history(cafe_id: str):
 # ============================================
 
 @api_router.get("/reports/daily")
-async def get_daily_report(cafe_id: str, report_date: Optional[str] = None):
+async def get_daily_report(report_date: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Get daily report for the user's cafe."""
+    cafe_id = current_user["cafe_id"]
     if not report_date:
         report_date = date.today().isoformat()
     
@@ -1059,7 +1222,9 @@ async def get_daily_report(cafe_id: str, report_date: Optional[str] = None):
 # ============================================
 
 @api_router.get("/inventory", response_model=List[InventoryItem])
-async def get_inventory(cafe_id: str):
+async def get_inventory(current_user: dict = Depends(get_current_user)):
+    """Get inventory for the user's cafe."""
+    cafe_id = current_user["cafe_id"]
     items = await db.inventory.find({"cafe_id": cafe_id}, {"_id": 0}).to_list(1000)
     for item in items:
         if isinstance(item.get('created_at'), str):
@@ -1069,8 +1234,17 @@ async def get_inventory(cafe_id: str):
     return items
 
 @api_router.post("/inventory", response_model=InventoryItem)
-async def create_inventory_item(input: InventoryItemCreate):
-    item = InventoryItem(**input.model_dump())
+async def create_inventory_item(input: InventoryItemCreate, current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Create an inventory item — cafe_id is always taken from JWT."""
+    item = InventoryItem(
+        name=input.name,
+        cafe_id=current_user["cafe_id"],
+        unit=input.unit,
+        current_stock=input.current_stock,
+        min_stock=input.min_stock,
+        max_stock=input.max_stock,
+        cost_per_unit=input.cost_per_unit
+    )
     item_dict = item.model_dump()
     item_dict['created_at'] = item_dict['created_at'].isoformat()
     if item_dict.get('last_restocked'):
@@ -1079,11 +1253,21 @@ async def create_inventory_item(input: InventoryItemCreate):
     return item
 
 @api_router.put("/inventory/{item_id}", response_model=InventoryItem)
-async def update_inventory_item(item_id: str, updates: Dict[str, Any]):
-    if "last_restocked" in updates and isinstance(updates["last_restocked"], datetime):
-        updates["last_restocked"] = updates["last_restocked"].isoformat()
+async def update_inventory_item(item_id: str, updates: Dict[str, Any], current_user: dict = Depends(require_role(["owner", "superadmin"]))):
+    """Update an inventory item — verifies it belongs to the user's cafe."""
+    existing = await db.inventory.find_one({"id": item_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Inventory item not found.")
+    if existing["cafe_id"] != current_user["cafe_id"]:
+        raise HTTPException(status_code=403, detail="You do not have access to this inventory item.")
     
-    await db.inventory.update_one({"id": item_id}, {"$set": updates})
+    updates_copy = dict(updates)
+    updates_copy.pop("cafe_id", None)
+    
+    if "last_restocked" in updates_copy and isinstance(updates_copy["last_restocked"], datetime):
+        updates_copy["last_restocked"] = updates_copy["last_restocked"].isoformat()
+    
+    await db.inventory.update_one({"id": item_id}, {"$set": updates_copy})
     updated_item = await db.inventory.find_one({"id": item_id}, {"_id": 0})
     
     if isinstance(updated_item.get('created_at'), str):

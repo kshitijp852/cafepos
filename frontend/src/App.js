@@ -10,7 +10,7 @@ import { WaiterManagement } from '@/components/pos/master/WaiterManagement';
 import { WaiterApp } from '@/components/pos/waiter/WaiterApp';
 import { WaiterAuthPage } from '@/components/pos/waiter/WaiterAuthPage';
 import { AuthPage } from '@/pages/AuthPage';
-import { getUser, clearAuth } from '@/utils/storage';
+import { getUser, getToken, clearAuth } from '@/utils/storage';
 import { Toaster } from '@/components/ui/sonner';
 
 function App() {
@@ -19,9 +19,11 @@ function App() {
   const [userRole, setUserRole] = useState('master'); // 'master' or 'waiter'
 
   useEffect(() => {
-    // Check if user is logged in
+    // Check if user is logged in AND has a valid token
     const savedUser = getUser();
-    if (savedUser) {
+    const token = getToken();
+    
+    if (savedUser && token) {
       setUser(savedUser);
       // Determine role based on URL or user role
       const urlParams = new URLSearchParams(window.location.search);
@@ -29,6 +31,9 @@ function App() {
       if (roleParam === 'waiter' || savedUser.role === 'waiter') {
         setUserRole('waiter');
       }
+    } else if (savedUser || token) {
+      // One exists but not both - clear auth
+      clearAuth();
     }
   }, []);
 

@@ -1,7 +1,31 @@
 import axios from 'axios';
+import { getToken } from './storage';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
+
+// Axios interceptor — attach JWT to every request automatically
+axios.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Axios interceptor — handle 401 globally (token expired)
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear stale auth and reload to login screen
+      localStorage.removeItem('pos_user');
+      localStorage.removeItem('pos_token');
+      window.location.reload();
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Auth APIs
 export const registerUser = async (data) => {
@@ -14,9 +38,9 @@ export const loginUser = async (data) => {
   return response.data;
 };
 
-// Menu APIs
-export const getCategories = async (cafeId) => {
-  const response = await axios.get(`${API}/menu/categories?cafe_id=${cafeId}`);
+// Menu APIs — cafe_id now comes from JWT on the backend
+export const getCategories = async () => {
+  const response = await axios.get(`${API}/menu/categories`);
   return response.data;
 };
 
@@ -25,8 +49,18 @@ export const createCategory = async (data) => {
   return response.data;
 };
 
-export const getMenuItems = async (cafeId) => {
-  const response = await axios.get(`${API}/menu/items?cafe_id=${cafeId}`);
+export const updateCategory = async (categoryId, data) => {
+  const response = await axios.put(`${API}/menu/categories/${categoryId}`, data);
+  return response.data;
+};
+
+export const deleteCategory = async (categoryId) => {
+  const response = await axios.delete(`${API}/menu/categories/${categoryId}`);
+  return response.data;
+};
+
+export const getMenuItems = async () => {
+  const response = await axios.get(`${API}/menu/items`);
   return response.data;
 };
 
@@ -46,8 +80,8 @@ export const deleteMenuItem = async (itemId) => {
 };
 
 // Table & Floor APIs
-export const getFloors = async (cafeId) => {
-  const response = await axios.get(`${API}/floors?cafe_id=${cafeId}`);
+export const getFloors = async () => {
+  const response = await axios.get(`${API}/floors`);
   return response.data;
 };
 
@@ -56,8 +90,8 @@ export const createFloor = async (data) => {
   return response.data;
 };
 
-export const getTables = async (cafeId) => {
-  const response = await axios.get(`${API}/tables?cafe_id=${cafeId}`);
+export const getTables = async () => {
+  const response = await axios.get(`${API}/tables`);
   return response.data;
 };
 
@@ -72,8 +106,8 @@ export const updateTable = async (tableId, data) => {
 };
 
 // Order APIs
-export const getOrders = async (cafeId, status = 'active') => {
-  const response = await axios.get(`${API}/orders?cafe_id=${cafeId}&status=${status}`);
+export const getOrders = async (status = 'active') => {
+  const response = await axios.get(`${API}/orders?status=${status}`);
   return response.data;
 };
 
@@ -93,8 +127,8 @@ export const cancelOrder = async (orderId) => {
 };
 
 // Bill APIs
-export const getBills = async (cafeId, limit = 100, dateFilter = null) => {
-  let url = `${API}/bills?cafe_id=${cafeId}&limit=${limit}`;
+export const getBills = async (limit = 100, dateFilter = null) => {
+  let url = `${API}/bills?limit=${limit}`;
   if (dateFilter) {
     url += `&date_filter=${dateFilter}`;
   }
@@ -113,10 +147,10 @@ export const createBill = async (data) => {
 };
 
 // Reservation APIs
-export const getReservations = async (cafeId, dateFilter = null) => {
-  let url = `${API}/reservations?cafe_id=${cafeId}`;
+export const getReservations = async (dateFilter = null) => {
+  let url = `${API}/reservations`;
   if (dateFilter) {
-    url += `&date_filter=${dateFilter}`;
+    url += `?date_filter=${dateFilter}`;
   }
   const response = await axios.get(url);
   return response.data;
@@ -138,8 +172,8 @@ export const cancelReservation = async (reservationId) => {
 };
 
 // Day Session APIs
-export const getCurrentSession = async (cafeId) => {
-  const response = await axios.get(`${API}/sessions/current?cafe_id=${cafeId}`);
+export const getCurrentSession = async () => {
+  const response = await axios.get(`${API}/sessions/current`);
   return response.data;
 };
 
@@ -153,24 +187,24 @@ export const closeDaySession = async (data) => {
   return response.data;
 };
 
-export const getSessionHistory = async (cafeId) => {
-  const response = await axios.get(`${API}/sessions/history?cafe_id=${cafeId}`);
+export const getSessionHistory = async () => {
+  const response = await axios.get(`${API}/sessions/history`);
   return response.data;
 };
 
 // Reports APIs
-export const getDailyReport = async (cafeId, reportDate = null) => {
-  let url = `${API}/reports/daily?cafe_id=${cafeId}`;
+export const getDailyReport = async (reportDate = null) => {
+  let url = `${API}/reports/daily`;
   if (reportDate) {
-    url += `&report_date=${reportDate}`;
+    url += `?report_date=${reportDate}`;
   }
   const response = await axios.get(url);
   return response.data;
 };
 
 // Inventory APIs
-export const getInventory = async (cafeId) => {
-  const response = await axios.get(`${API}/inventory?cafe_id=${cafeId}`);
+export const getInventory = async () => {
+  const response = await axios.get(`${API}/inventory`);
   return response.data;
 };
 
@@ -195,8 +229,8 @@ export const printKOT = async (orderId) => {
   return response.data;
 };
 // Waiter Management APIs
-export const getWaiters = async (cafeId) => {
-  const response = await axios.get(`${API}/waiters?cafe_id=${cafeId}`);
+export const getWaiters = async () => {
+  const response = await axios.get(`${API}/waiters?cafe_id=${getCafeIdFromStorage()}`);
   return response.data;
 };
 
@@ -220,7 +254,21 @@ export const deactivateWaiter = async (waiterId) => {
   return response.data;
 };
 
-export const getDeviceSessions = async (cafeId) => {
-  const response = await axios.get(`${API}/device-sessions?cafe_id=${cafeId}`);
+export const getDeviceSessions = async () => {
+  const response = await axios.get(`${API}/device-sessions?cafe_id=${getCafeIdFromStorage()}`);
   return response.data;
 };
+
+// Helper to get cafe_id from JWT token stored in localStorage
+function getCafeIdFromStorage() {
+  const token = localStorage.getItem('pos_token');
+  if (!token) return '';
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return '';
+    const decoded = JSON.parse(atob(parts[1]));
+    return decoded.cafe_id || '';
+  } catch (e) {
+    return '';
+  }
+}

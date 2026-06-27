@@ -1,0 +1,32 @@
+name,price,category
+Espresso,80,Coffee
+Americano,90,Coffee
+Latte,120,Coffee
+Cappuccino,130,Coffee
+Mocha,140,Coffee
+Cold Coffee,110,Coffee
+Green Tea,70,Beverages
+Black Tea,60,Beverages
+Iced Tea,80,Beverages
+Fresh Lime Juice,90,Beverages
+Mango Shake,120,Shakes
+Strawberry Shake,120,Shakes
+Banana Shake,110,Shakes
+Chocolate Shake,130,Shakes
+Biryani,250,Main Courses
+Butter Chicken,280,Main Courses
+Tandoori Chicken,220,Main Courses
+Paneer Tikka Masala,240,Main Courses
+Dal Makhani,200,Main Courses
+Garlic Naan,50,Breads
+Butter Naan,55,Breads
+Tandoori Roti,40,Breads
+Paratha,70,Breads
+Samosa,30,Appetizers
+Spring Roll,40,Appetizers
+Pakora,50,Appetizers
+Chicken Wings,120,Appetizers
+Gulab Jamun,60,Desserts
+Kheer,70,Desserts
+Rasgulla,50,Desserts
+Ice Cream,80,Desserts

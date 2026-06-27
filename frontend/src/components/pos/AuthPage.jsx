@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Coffee, AlertCircle } from 'lucide-react';
 import { loginUser } from '@/utils/api';
-import { saveUser } from '@/utils/storage';
+import { saveUser, saveToken } from '@/utils/storage';
 import { toast } from 'sonner';
 
 export const AuthPage = ({ onAuthSuccess }) => {
@@ -24,9 +24,11 @@ export const AuthPage = ({ onAuthSuccess }) => {
 
     try {
       const response = await loginUser(formData);
-      saveUser(response);
+      // Save the user object and JWT token
+      saveUser(response.user);
+      saveToken(response.token);
       toast.success('Login successful!');
-      onAuthSuccess(response);
+      onAuthSuccess(response.user);
     } catch (error) {
       console.error('Login error:', error);
       const errorMessage = error.response?.data?.detail || 'Login failed. Please check your credentials.';

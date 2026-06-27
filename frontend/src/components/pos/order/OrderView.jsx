@@ -30,8 +30,8 @@ export const OrderView = ({ cafeId }) => {
     try {
       setLoading(true);
       const [items, cats] = await Promise.all([
-        getMenuItems(cafeId),
-        getCategories(cafeId)
+        getMenuItems(),
+        getCategories()
       ]);
       setMenuItems(items.filter(item => item.available));
       setCategories(cats);

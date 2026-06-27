@@ -39,8 +39,8 @@ export const WaiterOrderView = ({ cafeId, table, waiterId, waiterName }) => {
     try {
       setLoading(true);
       const [categoriesData, itemsData] = await Promise.all([
-        getCategories(cafeId),
-        getMenuItems(cafeId)
+        getCategories(),
+        getMenuItems()
       ]);
       
       setCategories(categoriesData);

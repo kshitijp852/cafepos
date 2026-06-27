@@ -10,7 +10,9 @@ import {
   Package,
   LogOut,
   Monitor,
-  UserCheck
+  UserCheck,
+  Save,
+  RefreshCw
 } from 'lucide-react';
 
 export const Header = ({ user, activeTab, onTabChange, onLogout, userRole, onRoleChange }) => {
@@ -74,7 +76,8 @@ export const Header = ({ user, activeTab, onTabChange, onLogout, userRole, onRol
                 Switch to Waiter
               </Button>
             </div>
-            
+
+            {/* Status Indicator */}
             <div className="text-right" data-testid="user-info">
               <p className="text-sm font-medium text-gray-900">{user?.name}</p>
               <p className="text-xs text-gray-500">Manager</p>
