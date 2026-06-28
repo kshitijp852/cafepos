@@ -57,11 +57,15 @@ export const TableDashboard = ({ cafeId }) => {
   // UI State
   const [selectedTable, setSelectedTable] = useState(null);
   const [showOrderDialog, setShowOrderDialog] = useState(false);
+  const [showSettlementDialog, setShowSettlementDialog] = useState(false);
+  const [settlementTable, setSettlementTable] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState('cash');
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [analytics, setAnalytics] = useState({ totalBills: 0, totalRevenue: 0, cashPayments: 0, onlinePayments: 0 });
 
   // Load all data
   useEffect(() => {
@@ -344,8 +348,8 @@ export const TableDashboard = ({ cafeId }) => {
     }
   };
 
-  // Settle bill
-  const settleBill = async (tableNum) => {
+  // Settle bill with payment method
+  const settleBill = async (tableNum, method = 'cash') => {
     const order = getTableOrder(tableNum);
     if (!order) {
       toast.error('No order found for this table');
@@ -357,21 +361,35 @@ export const TableDashboard = ({ cafeId }) => {
       const tax = order.tax || 0;
       const total = order.total || 0;
 
-      // Create bill
+      // Create bill with payment method
       await createBill({
         cafe_id: cafeId,
         table_id: `table_${tableNum}`,
         items: order.items,
         tax_percentage: 5,
-        payment_method: 'cash',
+        payment_method: method,
         order_id: order.id
       });
 
-      toast.success('Bill created and order completed');
+      // Update analytics
+      const newAnalytics = { ...analytics };
+      newAnalytics.totalBills += 1;
+      newAnalytics.totalRevenue += total;
+      if (method === 'cash') {
+        newAnalytics.cashPayments += 1;
+      } else if (method === 'online') {
+        newAnalytics.onlinePayments += 1;
+      }
+      setAnalytics(newAnalytics);
+
+      toast.success(`Bill settled via ${method.charAt(0).toUpperCase() + method.slice(1)}`);
+      setShowSettlementDialog(false);
+      setPaymentMethod('cash');
+      setSettlementTable(null);
       await loadData();
     } catch (err) {
       console.error('Error settling bill:', err);
-      toast.error('Failed to create bill');
+      toast.error('Failed to settle bill');
     }
   };
 
@@ -415,6 +433,28 @@ export const TableDashboard = ({ cafeId }) => {
 
   return (
     <div className="w-full h-full bg-gray-50 flex flex-col">
+      {/* Analytics Summary */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b p-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-lg p-3 border border-gray-200">
+            <div className="text-xs text-gray-600 font-medium">Total Bills</div>
+            <div className="text-2xl font-bold text-gray-900">{analytics.totalBills}</div>
+          </div>
+          <div className="bg-white rounded-lg p-3 border border-gray-200">
+            <div className="text-xs text-gray-600 font-medium">Total Revenue</div>
+            <div className="text-2xl font-bold text-green-600">₹{analytics.totalRevenue.toFixed(0)}</div>
+          </div>
+          <div className="bg-white rounded-lg p-3 border border-gray-200">
+            <div className="text-xs text-gray-600 font-medium">Cash Payments</div>
+            <div className="text-2xl font-bold text-blue-600">{analytics.cashPayments}</div>
+          </div>
+          <div className="bg-white rounded-lg p-3 border border-gray-200">
+            <div className="text-xs text-gray-600 font-medium">Online Payments</div>
+            <div className="text-2xl font-bold text-purple-600">{analytics.onlinePayments}</div>
+          </div>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="bg-white border-b p-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -498,11 +538,12 @@ export const TableDashboard = ({ cafeId }) => {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        settleBill(tableNum);
+                        setSettlementTable(tableNum);
+                        setShowSettlementDialog(true);
                       }}
                       className="mt-2 w-full h-6 text-xs"
                     >
-                      Bill
+                      Settle Bill
                     </Button>
                   )}
                 </button>
@@ -790,6 +831,97 @@ export const TableDashboard = ({ cafeId }) => {
                   Close
                 </Button>
               </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Settlement Dialog */}
+      <Dialog open={showSettlementDialog} onOpenChange={setShowSettlementDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Settle Bill - Table {settlementTable}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Order Summary */}
+            {settlementTable && getTableOrder(settlementTable) && (
+              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Subtotal:</span>
+                  <span className="font-medium">₹{(getTableOrder(settlementTable).subtotal || 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Tax (5%):</span>
+                  <span className="font-medium">₹{(getTableOrder(settlementTable).tax || 0).toFixed(2)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total:</span>
+                  <span className="text-green-600">₹{(getTableOrder(settlementTable).total || 0).toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Payment Method Selection */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold">Select Payment Method</Label>
+              
+              <button
+                onClick={() => setPaymentMethod('cash')}
+                className={`w-full p-3 rounded-lg border-2 transition-colors ${
+                  paymentMethod === 'cash'
+                    ? 'border-green-500 bg-green-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-2xl">💵</div>
+                  <div className="text-left">
+                    <div className="font-semibold text-gray-900">Cash</div>
+                    <div className="text-xs text-gray-600">Pay in cash at counter</div>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setPaymentMethod('online')}
+                className={`w-full p-3 rounded-lg border-2 transition-colors ${
+                  paymentMethod === 'online'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-2xl">💳</div>
+                  <div className="text-left">
+                    <div className="font-semibold text-gray-900">Online Payment</div>
+                    <div className="text-xs text-gray-600">Card / UPI / Digital wallet</div>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowSettlementDialog(false);
+                  setPaymentMethod('cash');
+                  setSettlementTable(null);
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => settleBill(settlementTable, paymentMethod)}
+                className="flex-1 bg-green-600 hover:bg-green-700"
+              >
+                <Check className="w-4 h-4 mr-2" />
+                Settle Bill
+              </Button>
             </div>
           </div>
         </DialogContent>
