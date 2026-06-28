@@ -26,7 +26,8 @@ import {
   Trash2,
   Check,
   Upload,
-  FileText
+  FileText,
+  Printer
 } from 'lucide-react';
 import { 
   getOrders,
@@ -377,7 +378,7 @@ export const TableDashboard = ({ cafeId }) => {
       newAnalytics.totalRevenue += total;
       if (method === 'cash') {
         newAnalytics.cashPayments += 1;
-      } else if (method === 'online') {
+      } else if (method === 'card' || method === 'online') {
         newAnalytics.onlinePayments += 1;
       }
       setAnalytics(newAnalytics);
@@ -846,7 +847,17 @@ export const TableDashboard = ({ cafeId }) => {
           <div className="space-y-4">
             {/* Order Summary */}
             {settlementTable && getTableOrder(settlementTable) && (
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+              <div className="bg-gray-50 p-4 rounded-lg space-y-2 border border-gray-200">
+                <h3 className="font-semibold text-sm text-gray-900 mb-3">Order Summary</h3>
+                <div className="space-y-2">
+                  {getTableOrder(settlementTable).items && getTableOrder(settlementTable).items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between text-xs text-gray-700">
+                      <span>{item.menu_item_name} x{item.quantity}</span>
+                      <span>₹{(item.price * item.quantity).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+                <Separator className="my-2" />
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Subtotal:</span>
                   <span className="font-medium">₹{(getTableOrder(settlementTable).subtotal || 0).toFixed(2)}</span>
@@ -863,43 +874,80 @@ export const TableDashboard = ({ cafeId }) => {
               </div>
             )}
 
-            {/* Payment Method Selection */}
+            {/* Payment Method Selection with Radio Buttons */}
             <div className="space-y-3">
-              <Label className="text-base font-semibold">Select Payment Method</Label>
+              <Label className="text-base font-semibold">Payment Method</Label>
               
-              <button
-                onClick={() => setPaymentMethod('cash')}
-                className={`w-full p-3 rounded-lg border-2 transition-colors ${
+              <div className="space-y-2">
+                {/* Cash Option */}
+                <label className={`flex items-center p-3 rounded-lg border-2 cursor-pointer transition-colors ${
                   paymentMethod === 'cash'
                     ? 'border-green-500 bg-green-50'
                     : 'border-gray-200 bg-white hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="text-2xl">💵</div>
-                  <div className="text-left">
-                    <div className="font-semibold text-gray-900">Cash</div>
-                    <div className="text-xs text-gray-600">Pay in cash at counter</div>
+                }`}>
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="cash"
+                    checked={paymentMethod === 'cash'}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-4 h-4 cursor-pointer"
+                  />
+                  <div className="flex items-center gap-3 ml-3 flex-1">
+                    <div className="text-2xl">💵</div>
+                    <div>
+                      <div className="font-semibold text-sm text-gray-900">Cash</div>
+                      <div className="text-xs text-gray-600">Pay in cash at counter</div>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </label>
 
-              <button
-                onClick={() => setPaymentMethod('online')}
-                className={`w-full p-3 rounded-lg border-2 transition-colors ${
-                  paymentMethod === 'online'
+                {/* Card Option */}
+                <label className={`flex items-center p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                  paymentMethod === 'card'
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 bg-white hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="text-2xl">💳</div>
-                  <div className="text-left">
-                    <div className="font-semibold text-gray-900">Online Payment</div>
-                    <div className="text-xs text-gray-600">Card / UPI / Digital wallet</div>
+                }`}>
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="card"
+                    checked={paymentMethod === 'card'}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-4 h-4 cursor-pointer"
+                  />
+                  <div className="flex items-center gap-3 ml-3 flex-1">
+                    <div className="text-2xl">💳</div>
+                    <div>
+                      <div className="font-semibold text-sm text-gray-900">Card</div>
+                      <div className="text-xs text-gray-600">Credit / Debit card</div>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </label>
+
+                {/* Online Option */}
+                <label className={`flex items-center p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                  paymentMethod === 'online'
+                    ? 'border-purple-500 bg-purple-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}>
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="online"
+                    checked={paymentMethod === 'online'}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-4 h-4 cursor-pointer"
+                  />
+                  <div className="flex items-center gap-3 ml-3 flex-1">
+                    <div className="text-2xl">📱</div>
+                    <div>
+                      <div className="font-semibold text-sm text-gray-900">Online</div>
+                      <div className="text-xs text-gray-600">UPI / Digital wallet / Net banking</div>
+                    </div>
+                  </div>
+                </label>
+              </div>
             </div>
 
             {/* Action Buttons */}
@@ -916,11 +964,17 @@ export const TableDashboard = ({ cafeId }) => {
                 Cancel
               </Button>
               <Button
-                onClick={() => settleBill(settlementTable, paymentMethod)}
+                onClick={() => {
+                  settleBill(settlementTable, paymentMethod);
+                  // Print bill after settling
+                  setTimeout(() => {
+                    window.print();
+                  }, 500);
+                }}
                 className="flex-1 bg-green-600 hover:bg-green-700"
               >
                 <Check className="w-4 h-4 mr-2" />
-                Settle Bill
+                Settle & Print
               </Button>
             </div>
           </div>
