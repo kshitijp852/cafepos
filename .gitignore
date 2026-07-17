@@ -31,11 +31,16 @@ dist/
 dist
 
 # Environment files (DO NOT COMMIT - contains secrets)
+# Catch every *.env variant (backend.env, frontend.env, .env.local, ...)
 .env
+*.env
 .env.local
 .env.*.local
-frontend/.env
-backend/.env
+# ...but keep the committed templates
+!.env.example
+!*.env.example
+# Leaked machine-path env dump (do not track)
+env-files/
 *token.json*
 *credentials.json*
 

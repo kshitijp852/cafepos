@@ -1,0 +1,29 @@
+# Local development stack: MongoDB + FastAPI backend.
+# The frontend runs separately (yarn dev, or deployed to Vercel).
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      DB_NAME: pos_database
+      CORS_ORIGINS: http://localhost:3000
+      # Override in a real deployment. Never ship this default.
+      JWT_SECRET: ${JWT_SECRET:-dev-insecure-change-me-0123456789}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRY_HOURS: "24"
+    depends_on:
+      - mongo
+
+volumes:
+  mongo_data:

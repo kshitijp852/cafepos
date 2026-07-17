@@ -1,0 +1,95 @@
+import { NavLink } from "react-router-dom";
+import {
+  CalendarBlank,
+  ChartLineUp,
+  ClockCounterClockwise,
+  ForkKnife,
+  GridFour,
+  Package,
+  ShoppingBag,
+  SquaresFour,
+  Users,
+  type Icon,
+} from "@phosphor-icons/react";
+
+import { cn } from "@/lib/utils";
+
+type NavItem = { to: string; label: string; icon: Icon; end?: boolean };
+type NavGroup = { heading: string; items: NavItem[] };
+
+export const NAV_GROUPS: NavGroup[] = [
+  {
+    heading: "Operate",
+    items: [
+      { to: "/dashboard", label: "Floor", icon: SquaresFour },
+      { to: "/order", label: "Take Away", icon: ShoppingBag, end: true },
+      { to: "/reservations", label: "Reservations", icon: CalendarBlank },
+    ],
+  },
+  {
+    heading: "Catalog",
+    items: [
+      { to: "/menu", label: "Menu", icon: ForkKnife },
+      { to: "/inventory", label: "Inventory", icon: Package },
+    ],
+  },
+  {
+    heading: "Setup",
+    items: [
+      { to: "/tables", label: "Tables", icon: GridFour },
+      { to: "/staff", label: "Staff", icon: Users },
+    ],
+  },
+  {
+    heading: "Insights",
+    items: [
+      { to: "/analytics", label: "Analytics", icon: ChartLineUp },
+      { to: "/history", label: "History", icon: ClockCounterClockwise },
+    ],
+  },
+];
+
+export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+  return (
+    <nav className="flex-1 overflow-y-auto py-4">
+      {NAV_GROUPS.map((group) => (
+        <div key={group.heading} className="mb-5">
+          <div className="px-5 pb-2 text-[0.65rem] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+            {group.heading}
+          </div>
+          <ul>
+            {group.items.map(({ to, label, icon: Icon, end }) => (
+              <li key={to}>
+                <NavLink
+                  to={to}
+                  end={end}
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "text-foreground/70 hover:bg-accent hover:text-foreground",
+                    )
+                  }
+                >
+                  <Icon size={19} />
+                  <span>{label}</span>
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+export function Wordmark() {
+  return (
+    <div className="flex items-baseline gap-1.5 font-serif">
+      <span className="text-xl font-bold tracking-tight">Café</span>
+      <span className="text-xl font-semibold text-muted-foreground">POS</span>
+    </div>
+  );
+}

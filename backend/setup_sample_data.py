@@ -19,7 +19,7 @@ db = client[os.environ['DB_NAME']]
 
 
 async def setup_sample_data(cafe_id: str):
-    """Setup sample menu, tables, and floors for a cafe"""
+    """Seed sample categories + inventory for a cafe (menu/tables added manually)."""
     
     print(f"Setting up sample data for cafe: {cafe_id}")
     
@@ -33,65 +33,12 @@ async def setup_sample_data(cafe_id: str):
     
     await db.categories.insert_many(categories)
     print(f"✓ Created {len(categories)} categories")
-    
-    # Create sample menu items
-    menu_items = [
-        # Beverages
-        {"id": "item_1", "name": "Espresso", "price": 80, "category_id": "cat_beverages", "description": "Strong Italian coffee", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "item_2", "name": "Cappuccino", "price": 120, "category_id": "cat_beverages", "description": "Espresso with steamed milk", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "item_3", "name": "Latte", "price": 130, "category_id": "cat_beverages", "description": "Espresso with more milk", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "item_4", "name": "Cold Coffee", "price": 150, "category_id": "cat_beverages", "description": "Chilled coffee drink", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "item_5", "name": "Green Tea", "price": 60, "category_id": "cat_beverages", "description": "Healthy herbal tea", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "item_6", "name": "Masala Chai", "price": 40, "category_id": "cat_beverages", "description": "Indian spiced tea", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        
-        # Food
-        {"id": "item_7", "name": "Veg Sandwich", "price": 100, "category_id": "cat_food", "description": "Fresh vegetable sandwich", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "item_8", "name": "Cheese Sandwich", "price": 120, "category_id": "cat_food", "description": "Grilled cheese sandwich", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "item_9", "name": "Veg Burger", "price": 150, "category_id": "cat_food", "description": "Vegetarian burger", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "item_10", "name": "Pasta", "price": 180, "category_id": "cat_food", "description": "Italian pasta", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "item_11", "name": "Pizza", "price": 250, "category_id": "cat_food", "description": "Cheese pizza", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        
-        # Desserts
-        {"id": "item_12", "name": "Brownie", "price": 80, "category_id": "cat_desserts", "description": "Chocolate brownie", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "item_13", "name": "Ice Cream", "price": 60, "category_id": "cat_desserts", "description": "Vanilla ice cream", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "item_14", "name": "Pastry", "price": 100, "category_id": "cat_desserts", "description": "Fresh pastry", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        
-        # Snacks
-        {"id": "item_15", "name": "French Fries", "price": 80, "category_id": "cat_snacks", "description": "Crispy fries", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "item_16", "name": "Samosa", "price": 30, "category_id": "cat_snacks", "description": "Indian snack", "available": True, "cafe_id": cafe_id, "variants": [], "addons": [], "created_at": "2025-01-01T00:00:00Z"},
-    ]
-    
-    await db.menu_items.insert_many(menu_items)
-    print(f"✓ Created {len(menu_items)} menu items")
-    
-    # Create sample floors
-    floors = [
-        {"id": "floor_1", "name": "Ground Floor", "cafe_id": cafe_id, "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "floor_2", "name": "First Floor", "cafe_id": cafe_id, "created_at": "2025-01-01T00:00:00Z"},
-    ]
-    
-    await db.floors.insert_many(floors)
-    print(f"✓ Created {len(floors)} floors")
-    
-    # Create sample tables
-    tables = [
-        # Ground Floor
-        {"id": "table_1", "name": "T1", "floor_id": "floor_1", "capacity": 2, "status": "available", "cafe_id": cafe_id, "current_order_id": None, "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "table_2", "name": "T2", "floor_id": "floor_1", "capacity": 4, "status": "available", "cafe_id": cafe_id, "current_order_id": None, "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "table_3", "name": "T3", "floor_id": "floor_1", "capacity": 4, "status": "available", "cafe_id": cafe_id, "current_order_id": None, "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "table_4", "name": "T4", "floor_id": "floor_1", "capacity": 2, "status": "available", "cafe_id": cafe_id, "current_order_id": None, "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "table_5", "name": "T5", "floor_id": "floor_1", "capacity": 6, "status": "available", "cafe_id": cafe_id, "current_order_id": None, "created_at": "2025-01-01T00:00:00Z"},
-        
-        # First Floor
-        {"id": "table_6", "name": "T6", "floor_id": "floor_2", "capacity": 2, "status": "available", "cafe_id": cafe_id, "current_order_id": None, "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "table_7", "name": "T7", "floor_id": "floor_2", "capacity": 4, "status": "available", "cafe_id": cafe_id, "current_order_id": None, "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "table_8", "name": "T8", "floor_id": "floor_2", "capacity": 4, "status": "available", "cafe_id": cafe_id, "current_order_id": None, "created_at": "2025-01-01T00:00:00Z"},
-        {"id": "table_9", "name": "T9", "floor_id": "floor_2", "capacity": 8, "status": "available", "cafe_id": cafe_id, "current_order_id": None, "created_at": "2025-01-01T00:00:00Z"},
-    ]
-    
-    await db.tables.insert_many(tables)
-    print(f"✓ Created {len(tables)} tables")
-    
+
+    # NOTE: Menu items, floors, and tables are intentionally NOT seeded here.
+    # Configure them manually to exercise the real setup flow — menu via the
+    # in-app "Import CSV" button (which also auto-creates categories), and
+    # floors/tables through the UI.
+
     # Create sample inventory items
     inventory = [
         {"id": "inv_1", "name": "Coffee Beans", "cafe_id": cafe_id, "unit": "kg", "current_stock": 50, "min_stock": 10, "max_stock": 100, "cost_per_unit": 800, "created_at": "2025-01-01T00:00:00Z"},
@@ -105,12 +52,10 @@ async def setup_sample_data(cafe_id: str):
     print(f"✓ Created {len(inventory)} inventory items")
     
     print("\n✅ Sample data setup complete!")
-    print("\nYou can now:")
-    print("  - View menu items in the Order tab")
-    print("  - See tables in the Tables tab")
-    print("  - Check inventory in the Inventory tab")
-    print("  - Create reservations")
-    print("  - Process orders and generate bills")
+    print("\nSeeded: categories + inventory.")
+    print("Next, configure the rest yourself to test the real flow:")
+    print("  - Menu:   Menu tab → Import CSV (auto-creates categories)")
+    print("  - Tables: Tables tab → add floors + tables")
 
 
 async def main():
@@ -145,9 +90,9 @@ async def main():
             return
     
     # Check if data already exists
-    existing_items = await db.menu_items.count_documents({"cafe_id": selected_cafe['id']})
-    if existing_items > 0:
-        confirm = input(f"\n⚠️  This cafe already has {existing_items} menu items. Continue anyway? (yes/no): ")
+    existing = await db.inventory.count_documents({"cafe_id": selected_cafe['id']})
+    if existing > 0:
+        confirm = input(f"\n⚠️  This cafe already has {existing} inventory items. Continue anyway? (yes/no): ")
         if confirm.lower() != 'yes':
             print("Setup cancelled.")
             return
