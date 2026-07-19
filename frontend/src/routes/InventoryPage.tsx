@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Minus, Plus, Stack } from "@phosphor-icons/react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 import { errorMessage } from "@/api/client";
 import { createInventoryItem, updateInventoryItem, type InventoryInput } from "@/api/endpoints";

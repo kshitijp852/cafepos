@@ -37,6 +37,22 @@ async def test_bulk_skips_existing_names(api, owner):
     assert len(total.json()) == 5
 
 
+async def test_bulk_same_prefix_across_floors(api, owner):
+    ground = await _make_floor(api, owner["headers"], name="Ground Floor")
+    first = await _make_floor(api, owner["headers"], name="First Floor")
+    body = {"count": 3, "prefix": "T", "start": 1}
+    g = await api.post("/api/tables/bulk", json={**body, "floor_id": ground["id"]}, headers=owner["headers"])
+    f = await api.post("/api/tables/bulk", json={**body, "floor_id": first["id"]}, headers=owner["headers"])
+    # Same prefix T1..T3 must be allowed on a different floor — no cross-floor skip.
+    assert len(g.json()) == 3
+    assert len(f.json()) == 3
+    codes = [t["code"] for t in g.json()] + [t["code"] for t in f.json()]
+    assert set(codes) == {
+        "groundfloor-T1", "groundfloor-T2", "groundfloor-T3",
+        "firstfloor-T1", "firstfloor-T2", "firstfloor-T3",
+    }
+
+
 async def test_delete_table(api, owner):
     floor = await _make_floor(api, owner["headers"])
     t = await api.post(

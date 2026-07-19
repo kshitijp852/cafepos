@@ -3,6 +3,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 import { CaretDown, DeviceMobile, List, SignOut } from "@phosphor-icons/react";
 
 import { useAuth } from "@/auth/AuthContext";
+import { useCafe } from "@/api/queries";
 import type { User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -99,6 +100,7 @@ function AccountMenu({
 
 export function AppLayout() {
   const { user, logout } = useAuth();
+  const { data: cafe } = useCafe();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -140,9 +142,15 @@ export function AppLayout() {
             >
               <List size={22} />
             </Button>
-            <div className="lg:hidden">
-              <Wordmark />
-            </div>
+            {cafe?.name ? (
+              <h1 className="font-serif text-lg font-bold tracking-tight text-foreground truncate">
+                {cafe.name}
+              </h1>
+            ) : (
+              <div className="lg:hidden">
+                <Wordmark />
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-1">

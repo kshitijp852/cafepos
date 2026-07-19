@@ -1,5 +1,7 @@
 import { useTheme } from "next-themes"
-import { Toaster as Sonner, toast } from "sonner"
+import { Toaster as Sonner, toast as sonnerToast } from "sonner"
+
+import { pushNotification } from "@/lib/notifications"
 
 const Toaster = ({
   ...props
@@ -13,7 +15,7 @@ const Toaster = ({
       toastOptions={{
         classNames: {
           toast:
-            "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
+            "group toast rounded-none group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
           description: "group-[.toast]:text-muted-foreground",
           actionButton:
             "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
@@ -24,5 +26,25 @@ const Toaster = ({
       {...props} />
   );
 }
+
+// Record every toast into the notification log (AlertsBell panel), then show it.
+// Only string messages are logged; ReactNode toasts still display normally.
+const record = (kind, message) => {
+  if (typeof message === "string" && message.trim()) pushNotification(kind, message)
+}
+
+const wrap = (kind, fn) => (message, opts) => {
+  record(kind, message)
+  return fn(message, opts)
+}
+
+const toast = Object.assign(wrap("info", sonnerToast), {
+  ...sonnerToast,
+  success: wrap("success", sonnerToast.success),
+  error: wrap("error", sonnerToast.error),
+  warning: wrap("warning", sonnerToast.warning),
+  info: wrap("info", sonnerToast.info),
+  message: wrap("info", sonnerToast.message),
+})
 
 export { Toaster, toast }

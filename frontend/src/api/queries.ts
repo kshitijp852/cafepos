@@ -17,7 +17,15 @@ export const keys = {
   dailyReport: (date?: string) => ["report", date ?? "today"] as const,
   waiters: ["waiters"] as const,
   waiterDevices: ["waiterDevices"] as const,
+  cafe: ["cafe"] as const,
+  device: ["device", "me"] as const,
 };
+
+export const useCafe = () => useQuery({ queryKey: keys.cafe, queryFn: api.getCafe, staleTime: 300000 });
+
+// Waiter app: current device name + assigned waiter, polled so manager reassignment shows up live.
+export const useDevice = () =>
+  useQuery({ queryKey: keys.device, queryFn: api.getDeviceMe, refetchInterval: 10000 });
 
 export const useCategories = () =>
   useQuery({ queryKey: keys.categories, queryFn: api.getCategories });

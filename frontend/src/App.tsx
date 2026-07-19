@@ -36,14 +36,15 @@ export const router = createBrowserRouter([
   {
     element: <RequireAuth allowedRoles={["owner", "superadmin"]} redirectStaffToWaiter />,
     children: [
+      // Ordering is full-screen (its own header, no app chrome) — a focused task.
+      { path: "/order", element: <OrderPage /> },
+      { path: "/order/:tableId", element: <OrderPage /> },
+      { path: "/take-away", element: <Navigate to="/order" replace /> },
       {
         element: <AppLayout />,
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: "/dashboard", element: <DashboardPage /> },
-          { path: "/order", element: <OrderPage /> },
-          { path: "/order/:tableId", element: <OrderPage /> },
-          { path: "/take-away", element: <Navigate to="/order" replace /> },
           { path: "/menu", element: <MenuPage /> },
           { path: "/tables", element: <TablesPage /> },
           { path: "/staff", element: <StaffPage /> },

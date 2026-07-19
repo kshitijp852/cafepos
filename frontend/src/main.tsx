@@ -28,7 +28,7 @@ createRoot(document.getElementById("root")!).render(
       <IconContext.Provider value={{ weight: "regular", size: 18 }}>
         <AuthProvider>
           <RouterProvider router={router} />
-          <Toaster position="top-right" richColors />
+          <Toaster position="top-center" />
         </AuthProvider>
       </IconContext.Provider>
     </QueryClientProvider>

@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     # JWT
     jwt_secret: str
     jwt_algorithm: str = "HS256"
+
+    # Symmetric key (urlsafe-base64, 32 bytes) for encrypting recoverable staff
+    # passwords at rest. If empty, a key is derived from jwt_secret so no extra
+    # config is required; set explicitly to rotate independently of the JWT secret.
+    credential_enc_key: str = ""
     jwt_expiry_hours: int = 24
     jwt_refresh_expiry_days: int = 30
 
@@ -53,6 +58,10 @@ class Settings(BaseSettings):
 
     # Waiter device-pairing code lifetime (pending activation).
     device_code_expiry_minutes: int = 15
+
+    # Default country code (no '+') for normalizing local customer phone numbers
+    # to E.164 at settlement. 91 = India.
+    default_country_code: str = "91"
 
     @property
     def cors_origins_list(self) -> list[str]:

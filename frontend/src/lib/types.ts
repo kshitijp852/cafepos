@@ -53,14 +53,25 @@ export interface Floor {
   cafe_id: string;
 }
 
+export interface Cafe {
+  id: string;
+  name: string;
+  address?: string | null;
+  phone?: string | null;
+  gst_number?: string | null;
+  tax_percentage: number;
+}
+
 export interface Table {
   id: string;
   name: string;
+  code?: string | null;
   floor_id: string;
   capacity: number;
   status: TableStatus;
   cafe_id: string;
   current_order_id?: string | null;
+  seated_at?: string | null;
 }
 
 export interface OrderItem {
@@ -102,6 +113,9 @@ export interface Bill {
   payment_method: PaymentMethod;
   bill_hash: string;
   order_id?: string | null;
+  dwell_seconds?: number | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
   created_at: string;
 }
 
@@ -156,12 +170,16 @@ export interface DailyReport {
 
 export interface DeviceActivation {
   id: string;
-  user_id: string;
+  user_id?: string | null;
   cafe_id: string;
   device_id: string;
   code: string;
   device_name?: string | null;
   status: "pending" | "active";
+  signed_in?: boolean;
+  last_login?: string | null;
+  last_logout?: string | null;
+  assigned_user?: { id: string; name: string; username?: string } | null;
   created_at: string;
   activated_at?: string | null;
 }

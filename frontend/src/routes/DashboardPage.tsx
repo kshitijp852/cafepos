@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, CheckCircle, Circle } from "@phosphor-icons/react";
+import { ArrowRight, CheckCircle, Circle, MagnifyingGlass } from "@phosphor-icons/react";
 
 import {
   useActiveOrders,
@@ -10,8 +11,11 @@ import {
   useWaiters,
 } from "@/api/queries";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { DwellTimer } from "@/components/DwellTimer";
 import { inr } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { searchFloors } from "@/lib/search";
 import type { Order, Table } from "@/lib/types";
 
 export function DashboardPage() {
@@ -23,8 +27,10 @@ export function DashboardPage() {
   const { data: report } = useDailyReport();
   const navigate = useNavigate();
 
+  const [query, setQuery] = useState("");
   const orderFor = (t: Table) => orders.find((o) => o.table_id === t.id);
   const needsSetup = menuItems.length === 0 || tables.length === 0;
+  const groups = searchFloors(floors, tables, query);
 
   return (
     <div className="flex h-full flex-col">
@@ -49,22 +55,39 @@ export function DashboardPage() {
           />
         )}
 
-        {floors.map((floor) => {
-          const floorTables = tables.filter((t) => t.floor_id === floor.id);
-          if (floorTables.length === 0) return null;
-          return (
-            <section key={floor.id}>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-                {floor.name}
-              </h2>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                {floorTables.map((table) => (
-                  <TableTile key={table.id} table={table} order={orderFor(table)} onOpen={() => navigate(`/order/${table.id}`)} />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+        {!needsSetup && tables.length > 0 && (
+          <div className="relative max-w-sm">
+            <MagnifyingGlass size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search table or floor…"
+              className="pl-9"
+            />
+          </div>
+        )}
+
+        {groups.map(({ floor, tables: floorTables, highlight }) => (
+          <section key={floor.id}>
+            <h2
+              className={cn(
+                "mb-3 inline-block text-xs font-semibold uppercase tracking-[0.15em]",
+                highlight ? "bg-accent px-2 py-0.5 text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {floor.name}
+            </h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+              {floorTables.map((table) => (
+                <TableTile key={table.id} table={table} order={orderFor(table)} onOpen={() => navigate(`/order/${table.id}`)} />
+              ))}
+            </div>
+          </section>
+        ))}
+
+        {query && groups.length === 0 && (
+          <p className="text-sm text-muted-foreground">No tables or floors match “{query}”.</p>
+        )}
       </div>
     </div>
   );
@@ -72,6 +95,7 @@ export function DashboardPage() {
 
 function TableTile({ table, order, onOpen }: { table: Table; order?: Order; onOpen: () => void }) {
   const occupied = !!order;
+  const reserved = !occupied && table.status === "reserved";
   return (
     <button
       onClick={onOpen}
@@ -79,7 +103,9 @@ function TableTile({ table, order, onOpen }: { table: Table; order?: Order; onOp
         "flex aspect-square flex-col items-center justify-center gap-1 border p-3 transition-colors",
         occupied
           ? "border-warning bg-warning/10 hover:bg-warning/20"
-          : "border-border hover:border-foreground hover:bg-accent",
+          : reserved
+            ? "border-info/60 bg-info/15 hover:bg-info/25"
+            : "border-success/60 bg-success/20 hover:bg-success/30",
       )}
     >
       <div className="font-serif text-2xl font-bold">{table.name}</div>
@@ -87,7 +113,10 @@ function TableTile({ table, order, onOpen }: { table: Table; order?: Order; onOp
         <>
           <div className="text-sm font-semibold nums">{inr(order!.total)}</div>
           <div className="text-[0.65rem] font-semibold uppercase tracking-wide text-warning">{order!.status}</div>
+          {table.seated_at && <DwellTimer seatedAt={table.seated_at} className="text-[0.65rem] text-muted-foreground" />}
         </>
+      ) : reserved ? (
+        <div className="text-[0.65rem] font-semibold uppercase tracking-wide text-info">Reserved</div>
       ) : (
         <div className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
           {table.capacity} seats

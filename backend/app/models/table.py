@@ -20,11 +20,17 @@ class FloorCreate(BaseModel):
 class Table(DBModel):
     id: str = Field(default_factory=new_id)
     name: str
+    # Human-readable, floor-scoped code: floorname + prefix + number (e.g. "groundfloor-T1").
+    # Unique per cafe; lets the same prefix repeat on different floors.
+    code: Optional[str] = None
     floor_id: str
     capacity: int
     status: str = TableStatus.available.value
     cafe_id: str
     current_order_id: Optional[str] = None
+    # When the table was first occupied (first order of the current sitting).
+    # Drives the live dwell timer; cleared when the bill is settled/table freed.
+    seated_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=utcnow)
 
 

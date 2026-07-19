@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Printer } from "@phosphor-icons/react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 import { errorMessage } from "@/api/client";
 import { closeDaySession, openDaySession, printBill } from "@/api/endpoints";

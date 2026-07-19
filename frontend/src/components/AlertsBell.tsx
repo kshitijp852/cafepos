@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Bell, ForkKnife, Package, Storefront, WarningCircle } from "@phosphor-icons/react";
 
 import { useActiveOrders, useCurrentSession, useInventory, useReservations, useTables } from "@/api/queries";
+import { clearNotifications, markNotificationsRead, useNotifications, type NotifKind } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 
 type Level = "danger" | "warning" | "info";
@@ -17,6 +18,24 @@ const LEVEL_DOT: Record<Level, string> = {
   info: "bg-foreground",
 };
 
+// Toast kinds map onto the same three-level dot palette used for live alerts.
+const NOTIF_DOT: Record<NotifKind, string> = {
+  success: "bg-success",
+  error: "bg-danger",
+  warning: "bg-warning",
+  info: "bg-foreground",
+};
+
+function timeAgo(ms: number): string {
+  const s = Math.floor((Date.now() - ms) / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 /** Operational alerts derived from live data — things a manager should act on now,
  *  not a generic notification feed. Each item links to where it can be handled. */
 export function AlertsBell() {
@@ -29,9 +48,12 @@ export function AlertsBell() {
   const { data: reservations = [] } = useReservations();
   const { data: tables = [] } = useTables();
   const { orders } = useActiveOrders();
+  const notifications = useNotifications();
+  const unreadNotifs = notifications.filter((n) => !n.read).length;
 
   useEffect(() => {
     if (!open) return;
+    markNotificationsRead(); // opening the panel marks the history seen
     const onDown = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
     const onEsc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
@@ -102,31 +124,32 @@ export function AlertsBell() {
   }, [inventory, session, reservations, tables, orders]);
 
   const count = alerts.length;
+  const badge = count + unreadNotifs; // live alerts + unseen notification history
 
   return (
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
         className="relative flex h-10 w-10 items-center justify-center border border-transparent transition-colors hover:bg-accent"
-        aria-label={`Alerts${count ? ` (${count})` : ""}`}
+        aria-label={`Alerts${badge ? ` (${badge})` : ""}`}
         aria-expanded={open}
       >
-        <Bell size={20} weight={count ? "fill" : "regular"} />
-        {count > 0 && (
+        <Bell size={20} weight={badge ? "fill" : "regular"} />
+        {badge > 0 && (
           <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center bg-danger px-1 text-[0.6rem] font-bold text-danger-foreground nums">
-            {count}
+            {badge}
           </span>
         )}
       </button>
 
       {open && (
         <div className="absolute right-0 z-50 mt-1 w-80 border border-border bg-card shadow-2xl shadow-foreground/10">
-          <div className="border-b border-border px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Needs attention{count ? ` · ${count}` : ""}
-          </div>
           <div className="max-h-[70vh] overflow-auto">
+            <div className="border-b border-border px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Needs attention{count ? ` · ${count}` : ""}
+            </div>
             {count === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-muted-foreground">All clear. Nothing needs attention.</div>
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">All clear. Nothing needs attention.</div>
             ) : (
               alerts.map((a) => {
                 const Icon = a.icon;
@@ -137,7 +160,7 @@ export function AlertsBell() {
                       setOpen(false);
                       navigate(a.to);
                     }}
-                    className="flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors last:border-0 hover:bg-accent"
+                    className="flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-accent"
                   >
                     <span className={cn("mt-1.5 h-2 w-2 shrink-0", LEVEL_DOT[a.level])} />
                     <Icon size={18} className="mt-0.5 shrink-0 text-muted-foreground" />
@@ -148,6 +171,36 @@ export function AlertsBell() {
                   </button>
                 );
               })
+            )}
+
+            <div className="flex items-center justify-between border-b border-t border-border px-4 py-2.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Recent{notifications.length ? ` · ${notifications.length}` : ""}
+              </span>
+              {notifications.length > 0 && (
+                <button
+                  onClick={clearNotifications}
+                  className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            {notifications.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">No notifications yet.</div>
+            ) : (
+              notifications.map((n) => (
+                <div
+                  key={n.id}
+                  className="flex items-start gap-3 border-b border-border px-4 py-3 last:border-0"
+                >
+                  <span className={cn("mt-1.5 h-2 w-2 shrink-0", NOTIF_DOT[n.kind])} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm">{n.message}</span>
+                    <span className="block text-xs text-muted-foreground">{timeAgo(n.at)}</span>
+                  </span>
+                </div>
+              ))
             )}
           </div>
         </div>

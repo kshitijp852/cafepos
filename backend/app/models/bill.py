@@ -33,6 +33,11 @@ class Bill(DBModel):
     # Attributed staff (copied from the settled order), for per-staff analytics.
     waiter_id: Optional[str] = None
     waiter_name: Optional[str] = None
+    # How long the customer occupied the table, first order -> this settlement.
+    dwell_seconds: Optional[int] = None
+    # Captured at settlement for receipts + future WhatsApp messaging.
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
     created_at: datetime = Field(default_factory=utcnow)
     soft_deleted: bool = False
 
@@ -44,3 +49,5 @@ class BillCreate(BaseModel):
     tax_percentage: Optional[float] = None
     payment_method: PaymentMethod = PaymentMethod.cash
     order_id: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None

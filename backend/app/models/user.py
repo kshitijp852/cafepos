@@ -99,40 +99,47 @@ class AuthResponse(BaseModel):
 
 
 class WaiterCreate(BaseModel):
-    """Manager creates a staff login. Username auto-generated from name if omitted."""
+    """Manager adds a staff member to the roster (a name for attribution).
+    No login credentials — staff never sign in; devices do."""
     name: str = Field(min_length=1)
     username: Optional[str] = None
-    password: str = Field(min_length=6)
-    confirm_password: str
-
-    @model_validator(mode="after")
-    def _passwords_match(self):
-        if self.password != self.confirm_password:
-            raise ValueError("Passwords do not match.")
-        return self
 
 
-class WaiterLogin(BaseModel):
-    """Waiter logs in on a device; device_id identifies this browser/terminal."""
-    username: str
-    password: str
-    device_id: str
+class WaiterUpdate(BaseModel):
+    """Admin edit of a staff roster entry. Any field omitted is left unchanged."""
+    name: Optional[str] = None
+    username: Optional[str] = None
 
 
 class DeviceActivate(BaseModel):
-    waiter_id: str  # the code must belong to / be assigned to THIS staff member
+    """Manager authorizes a paired device by its code, optionally naming it and
+    assigning the current waiter (both may be set/changed later)."""
     code: str
+    waiter_id: Optional[str] = None
+    device_name: Optional[str] = None
 
 
 class DeviceCodeRequest(BaseModel):
-    """Credential-less flow: a device asks for a pairing code before any login."""
+    """A device asks for a pairing code before a manager activates it."""
     device_id: str
 
 
 class DevicePoll(BaseModel):
-    """Credential-less flow: a device polls with its code to see if it's authorized."""
+    """A device polls with its code until a manager activates it."""
     device_id: str
     code: str
+
+
+class DeviceAssign(BaseModel):
+    """Manager sets/clears the current waiter on a device and/or renames it.
+    user_id=None clears the assignment (device becomes ordering-only)."""
+    user_id: Optional[str] = None
+    device_name: Optional[str] = None
+
+
+class DeviceLogout(BaseModel):
+    """Waiter signs out on a device; the pairing is kept but marked logged-out."""
+    device_id: str
 
 
 class DeviceActivation(DBModel):
@@ -148,6 +155,9 @@ class DeviceActivation(DBModel):
     code: str
     device_name: Optional[str] = None
     status: str = "pending"  # pending | active
+    signed_in: bool = False  # is a waiter currently signed in on this paired device
+    last_login: Optional[datetime] = None
+    last_logout: Optional[datetime] = None
     created_at: datetime = Field(default_factory=utcnow)
     expires_at: Optional[datetime] = None
     activated_by: Optional[str] = None

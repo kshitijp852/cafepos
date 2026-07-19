@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, PaperPlaneTilt, Trash } from "@phosphor-icons/react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 import { errorMessage } from "@/api/client";
 import { createOrder } from "@/api/endpoints";
 import { useCategories, useMenuItems, useTables } from "@/api/queries";
-import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/button";
 import { CartPanel } from "@/features/cart/CartPanel";
 import { MenuBrowser } from "@/features/cart/MenuBrowser";
@@ -17,7 +16,6 @@ export function WaiterOrderPage() {
   const { tableId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   const { data: menuItems = [] } = useMenuItems();
   const { data: categories = [] } = useCategories();
@@ -33,11 +31,10 @@ export function WaiterOrderPage() {
     if (cart.count === 0) return toast.error("Add items to the order");
     setSending(true);
     try {
+      // Waiter attribution is stamped server-side from the device's assignment.
       await createOrder({
         table_id: tableId,
         items: cart.items,
-        waiter_id: user?.id,
-        waiter_name: user?.name,
         status: "pending",
       });
       toast.success(`Order sent for ${table?.name ?? "table"}`);

@@ -28,6 +28,10 @@ module.exports = {
   				DEFAULT: 'hsl(var(--danger))',
   				foreground: 'hsl(var(--danger-foreground))'
   			},
+  			info: {
+  				DEFAULT: 'hsl(var(--info))',
+  				foreground: 'hsl(var(--info-foreground))'
+  			},
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {

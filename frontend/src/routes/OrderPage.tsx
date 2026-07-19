@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, CheckCircle, Printer, ShoppingBag } from "@phosphor-icons/react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 import { errorMessage } from "@/api/client";
 import { createBill, createOrder, printBill, updateOrder } from "@/api/endpoints";
 import { useActiveOrders, useCategories, useInvalidate, useMenuItems, useTables } from "@/api/queries";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PaymentMethodPicker } from "@/features/billing/PaymentMethodPicker";
 import { CartPanel } from "@/features/cart/CartPanel";
@@ -39,6 +40,7 @@ export function OrderPage() {
   const [step, setStep] = useState<"cart" | "pay">("cart");
   const [busy, setBusy] = useState(false);
   const [placed, setPlaced] = useState<Bill | null>(null); // take-away pickup token
+  const [customer, setCustomer] = useState({ name: "", phone: "" });
 
   // Seed the cart from an existing dine-in order, once.
   useEffect(() => {
@@ -79,6 +81,8 @@ export function OrderPage() {
         tax_percentage: tax,
         payment_method: method,
         order_id: existingOrder?.id ?? null,
+        customer_name: customer.name.trim() || undefined,
+        customer_phone: customer.phone.trim() || undefined,
       });
       await printBill(bill.id).catch(() => undefined);
       await invalidate(["orders", "tables", "bills", "report"]);
@@ -88,6 +92,7 @@ export function OrderPage() {
       } else {
         cart.clear();
         setStep("cart");
+        setCustomer({ name: "", phone: "" });
         setPlaced(bill);
       }
     } catch (err) {
@@ -100,7 +105,7 @@ export function OrderPage() {
   // Take-away success screen (pickup token).
   if (placed) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+      <div className="flex h-screen flex-col items-center justify-center gap-4 p-6 text-center">
         <CheckCircle size={48} weight="fill" className="text-success" />
         <div>
           <p className="text-sm uppercase tracking-wide text-muted-foreground">Pickup number</p>
@@ -120,7 +125,7 @@ export function OrderPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-screen flex-col bg-background">
       <div className="flex items-center gap-3 border-b border-border px-4 py-3 lg:px-6">
         <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
           <ArrowLeft size={18} /> {isDineIn ? "Floor" : "Back"}
@@ -203,6 +208,8 @@ export function OrderPage() {
               setTax={setTax}
               method={method}
               setMethod={setMethod}
+              customer={customer}
+              setCustomer={setCustomer}
               busy={busy}
               onBack={() => setStep("cart")}
               onConfirm={settle}
@@ -220,6 +227,8 @@ function PayStep({
   setTax,
   method,
   setMethod,
+  customer,
+  setCustomer,
   busy,
   onBack,
   onConfirm,
@@ -229,6 +238,8 @@ function PayStep({
   setTax: (n: number) => void;
   method: PaymentMethod;
   setMethod: (m: PaymentMethod) => void;
+  customer: { name: string; phone: string };
+  setCustomer: (c: { name: string; phone: string }) => void;
   busy: boolean;
   onBack: () => void;
   onConfirm: () => void;
@@ -258,6 +269,23 @@ function PayStep({
             Payment method
           </label>
           <PaymentMethodPicker value={method} onChange={setMethod} />
+        </div>
+        <div className="space-y-3 border-t border-border pt-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Customer (optional)
+          </p>
+          <Input
+            placeholder="Name"
+            value={customer.name}
+            onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
+          />
+          <Input
+            type="tel"
+            inputMode="tel"
+            placeholder="Phone (for WhatsApp)"
+            value={customer.phone}
+            onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+          />
         </div>
       </div>
 

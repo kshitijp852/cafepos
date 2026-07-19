@@ -5,15 +5,13 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.config import get_settings
-from app.core.deps import require_role
+from app.core.deps import get_current_user, require_role
 from app.core.security import (
-    create_access_token,
-    create_refresh_token,
+    create_device_refresh_token,
+    create_device_token,
     generate_device_code,
-    get_password_hash,
     is_expired,
     normalize_device_code,
-    verify_password,
 )
 from app.db.mongo import db
 from app.db.serialization import to_mongo
@@ -21,11 +19,13 @@ from app.models.common import Role, utcnow
 from app.models.user import (
     DeviceActivate,
     DeviceActivation,
+    DeviceAssign,
     DeviceCodeRequest,
+    DeviceLogout,
     DevicePoll,
     User,
     WaiterCreate,
-    WaiterLogin,
+    WaiterUpdate,
 )
 
 router = APIRouter(tags=["waiters"])
@@ -35,24 +35,30 @@ STAFF_ROLES = [Role.staff.value, "waiter"]  # accept legacy "waiter" role
 _MANAGER = require_role([Role.owner.value, Role.superadmin.value])
 
 
-def _issue_tokens(user_doc: dict) -> dict:
-    waiter = User(**user_doc)
-    return {
-        "status": "active",
-        "user": waiter,
-        "token": create_access_token(waiter.id, waiter.cafe_id, waiter.role),
-        "refresh_token": create_refresh_token(waiter.id, waiter.cafe_id, waiter.role),
-    }
-
-
 def _grouped(code: str) -> str:
     """Format a normalized code as XXXX-XXXX-XXXX for display."""
     return "-".join(code[i:i + 4] for i in range(0, len(code), 4))
 
 
+def _device_tokens(device_id: str, cafe_id: str) -> dict:
+    return {
+        "token": create_device_token(device_id, cafe_id),
+        "refresh_token": create_device_refresh_token(device_id, cafe_id),
+    }
+
+
+async def _assigned_user(activation: dict) -> dict | None:
+    """The staff member currently assigned to a device, or None (ordering-only)."""
+    uid = activation.get("user_id")
+    if not uid:
+        return None
+    u = await db.users.find_one({"id": uid}, {"_id": 0, "id": 1, "name": 1, "username": 1})
+    return u
+
+
 async def _unique_username(name: str, provided: str | None) -> str:
-    """Slugify the name (or use a provided handle) and append a numeric suffix
-    until it's free: 'Rahul Kumar' -> 'rahulkumar', then 'rahulkumar1', ..."""
+    """Slugify the name (or a provided handle) and append a numeric suffix until
+    free: 'Rahul Kumar' -> 'rahulkumar', then 'rahulkumar1', ..."""
     base = re.sub(r"[^a-z0-9]", "", (provided or name).lower()) or "staff"
     candidate = base
     suffix = 0
@@ -62,23 +68,23 @@ async def _unique_username(name: str, provided: str | None) -> str:
     return candidate
 
 
+# ---- Staff roster (names only — staff never log in; devices do) ----
+
 @router.post("/waiters", response_model=User)
 async def create_waiter(payload: WaiterCreate, current_user: dict = Depends(_MANAGER)):
-    """Create a staff login (username + password). cafe_id comes from the manager's JWT."""
+    """Add a staff member to the roster. Just a name (+ auto username) used to
+    attribute orders once assigned to a device — no login credentials."""
     cafe_id = current_user["cafe_id"]
     username = await _unique_username(payload.name, payload.username)
-
     waiter = User(
-        email=f"{username}@staff.local",  # satisfies the unique-email index; not used to log in
+        email=f"{username}@staff.local",  # satisfies the unique-email index; unused for login
         username=username,
         name=payload.name,
         role=Role.staff.value,
         cafe_id=cafe_id,
         created_by=current_user.get("user_id"),
     )
-    doc = to_mongo(waiter)
-    doc["password"] = get_password_hash(payload.password)
-    await db.users.insert_one(doc)
+    await db.users.insert_one(to_mongo(waiter))
     return waiter
 
 
@@ -87,8 +93,37 @@ async def get_waiters(current_user: dict = Depends(_MANAGER)):
     """List staff for the manager's cafe (active and deactivated)."""
     return await db.users.find(
         {"cafe_id": current_user["cafe_id"], "role": {"$in": STAFF_ROLES}},
-        {"_id": 0, "password": 0, "pin": 0},
+        {"_id": 0, "password": 0, "pin": 0, "password_enc": 0},
     ).to_list(1000)
+
+
+@router.patch("/waiters/{waiter_id}", response_model=User)
+async def update_waiter(waiter_id: str, payload: WaiterUpdate, current_user: dict = Depends(_MANAGER)):
+    """Edit a staff roster entry: name and/or username."""
+    staff = await db.users.find_one(
+        {"id": waiter_id, "cafe_id": current_user["cafe_id"], "role": {"$in": STAFF_ROLES}}
+    )
+    if not staff:
+        raise HTTPException(status_code=404, detail="Staff member not found.")
+
+    updates: dict = {}
+    if payload.name is not None and payload.name.strip():
+        updates["name"] = payload.name.strip()
+
+    if payload.username is not None and payload.username.strip():
+        uname = re.sub(r"[^a-z0-9]", "", payload.username.lower())
+        if not uname:
+            raise HTTPException(status_code=400, detail="Username must contain letters or digits.")
+        clash = await db.users.find_one({"username": uname, "id": {"$ne": waiter_id}})
+        if clash:
+            raise HTTPException(status_code=400, detail="That username is already taken.")
+        updates["username"] = uname
+        updates["email"] = f"{uname}@staff.local"
+
+    if updates:
+        await db.users.update_one({"id": waiter_id}, {"$set": updates})
+
+    return await db.users.find_one({"id": waiter_id}, {"_id": 0, "password": 0, "pin": 0, "password_enc": 0})
 
 
 @router.get("/waiters/{waiter_id}/stats")
@@ -97,7 +132,7 @@ async def waiter_stats(waiter_id: str, current_user: dict = Depends(_MANAGER)):
     cafe_id = current_user["cafe_id"]
     staff = await db.users.find_one(
         {"id": waiter_id, "cafe_id": cafe_id, "role": {"$in": STAFF_ROLES}},
-        {"_id": 0, "password": 0, "pin": 0},
+        {"_id": 0, "password": 0, "pin": 0, "password_enc": 0},
     )
     if not staff:
         raise HTTPException(status_code=404, detail="Staff member not found.")
@@ -146,61 +181,13 @@ async def waiter_stats(waiter_id: str, current_user: dict = Depends(_MANAGER)):
     }
 
 
-@router.post("/waiters/login", response_model=None)
-async def waiter_login(payload: WaiterLogin):
-    """Waiter logs in with username + password on a device.
-
-    If this device is already authorized for the account, real JWT tokens are
-    issued. Otherwise a pending device-pairing code is returned (stable across
-    repeated polls) for a manager to activate.
-    """
-    user = await db.users.find_one({"username": payload.username, "role": {"$in": STAFF_ROLES}})
-    if not user or not verify_password(payload.password, user.get("password", "")):
-        raise HTTPException(status_code=401, detail="Invalid username or password.")
-    if not user.get("is_active", True):
-        raise HTTPException(status_code=403, detail="Account is deactivated.")
-
-    active = await db.device_activations.find_one(
-        {"user_id": user["id"], "device_id": payload.device_id, "status": "active"}
-    )
-    if active:
-        return _issue_tokens(user)
-
-    # Reuse an existing, non-expired pending code so the code shown on the device
-    # stays stable while it polls; otherwise mint a fresh one.
-    pending = await db.device_activations.find_one(
-        {"user_id": user["id"], "device_id": payload.device_id, "status": "pending"}
-    )
-    if not pending or is_expired(pending["expires_at"]):
-        if pending:
-            await db.device_activations.delete_one({"_id": pending["_id"]})
-        activation = DeviceActivation(
-            user_id=user["id"],
-            cafe_id=user["cafe_id"],
-            device_id=payload.device_id,
-            code=normalize_device_code(generate_device_code()),
-            expires_at=utcnow() + timedelta(minutes=settings.device_code_expiry_minutes),
-        )
-        doc = to_mongo(activation)
-        # Store expires_at as a real BSON date (not the ISO string jsonable_encoder
-        # produces) so the TTL index works and is_expired can compare it.
-        doc["expires_at"] = activation.expires_at
-        await db.device_activations.insert_one(doc)
-        code = activation.code
-        expires_at = activation.expires_at
-    else:
-        code = pending["code"]
-        expires_at = pending["expires_at"]
-
-    return {"status": "pending", "code": _grouped(code), "expires_at": expires_at}
-
+# ---- Device pairing (device-code only; manager sets who's on the device) ----
 
 @router.post("/waiters/devices/request")
 async def request_device_code(payload: DeviceCodeRequest):
-    """Credential-less flow: a device gets a pairing code WITHOUT logging in. The
-    record has no staff yet — the manager assigns one when activating the code."""
+    """A device asks for a pairing code. The manager activates it from the panel."""
     pending = await db.device_activations.find_one(
-        {"device_id": payload.device_id, "user_id": None, "status": "pending"}
+        {"device_id": payload.device_id, "status": "pending"}
     )
     if pending and not is_expired(pending["expires_at"]):
         return {"code": _grouped(pending["code"]), "expires_at": pending["expires_at"]}
@@ -220,75 +207,138 @@ async def request_device_code(payload: DeviceCodeRequest):
 
 @router.post("/waiters/devices/poll")
 async def poll_device(payload: DevicePoll):
-    """Credential-less flow: device polls with its code; once a manager has
-    activated it (and assigned a staff member), tokens are returned."""
+    """Device polls with its code; once a manager activates it, a device token is
+    issued. The current waiter (if any) is resolved live on each request."""
     code = normalize_device_code(payload.code)
-    activation = await db.device_activations.find_one(
-        {"device_id": payload.device_id, "code": code}
-    )
+    activation = await db.device_activations.find_one({"device_id": payload.device_id, "code": code})
     if not activation:
         raise HTTPException(status_code=404, detail="Unknown device code.")
-    if activation["status"] == "active" and activation.get("user_id"):
-        user = await db.users.find_one({"id": activation["user_id"]})
-        if not user or not user.get("is_active", True):
-            raise HTTPException(status_code=401, detail="Staff account is inactive.")
-        return _issue_tokens(user)
-    return {"status": "pending"}
+    if activation["status"] != "active":
+        return {"status": "pending"}
+
+    await db.device_activations.update_one(
+        {"_id": activation["_id"]}, {"$set": {"signed_in": True, "last_login": utcnow()}}
+    )
+    return {
+        "status": "active",
+        **_device_tokens(activation["device_id"], activation["cafe_id"]),
+        "device": {
+            "device_id": activation["device_id"],
+            "device_name": activation.get("device_name"),
+            "assigned_user": await _assigned_user(activation),
+        },
+    }
+
+
+@router.get("/devices/me")
+async def device_me(current_user: dict = Depends(get_current_user)):
+    """The current device's name + assigned waiter (live). Used by the waiter app
+    to show who is on the device and to attribute orders."""
+    if not current_user.get("device_id"):
+        raise HTTPException(status_code=400, detail="Not a device session.")
+    activation = await db.device_activations.find_one(
+        {"device_id": current_user["device_id"], "status": "active"}, {"_id": 0}
+    )
+    if not activation:
+        raise HTTPException(status_code=401, detail="Device is no longer authorized.")
+    return {
+        "device_id": activation["device_id"],
+        "device_name": activation.get("device_name"),
+        "assigned_user": await _assigned_user(activation),
+    }
 
 
 @router.post("/waiters/devices/activate")
 async def activate_device(payload: DeviceActivate, current_user: dict = Depends(_MANAGER)):
-    """Manager authorizes a device by entering its code against a specific staff member.
-
-    Works for both flows:
-    - login flow: the code already carries a user_id — it must match the chosen staff.
-    - credential-less flow: the code has no staff yet — this assigns the chosen staff.
-    """
-    waiter = await db.users.find_one(
-        {"id": payload.waiter_id, "cafe_id": current_user["cafe_id"], "role": {"$in": STAFF_ROLES}},
-        {"_id": 0},
-    )
-    if not waiter or not waiter.get("is_active", True):
-        raise HTTPException(status_code=404, detail="Staff member not found or inactive.")
+    """Manager authorizes a pending device by its code. Optionally names it and
+    assigns the current waiter (both can be changed later)."""
+    cafe_id = current_user["cafe_id"]
+    waiter = None
+    if payload.waiter_id:
+        waiter = await db.users.find_one(
+            {"id": payload.waiter_id, "cafe_id": cafe_id, "role": {"$in": STAFF_ROLES}}, {"_id": 0}
+        )
+        if not waiter or not waiter.get("is_active", True):
+            raise HTTPException(status_code=404, detail="Staff member not found or inactive.")
 
     code = normalize_device_code(payload.code)
     activation = await db.device_activations.find_one({"code": code, "status": "pending"})
     if not activation or is_expired(activation["expires_at"]):
         raise HTTPException(status_code=400, detail="Invalid or expired code.")
-    # A code minted by one staff's login must not be redirected to a different staff.
-    if activation.get("user_id") and activation["user_id"] != payload.waiter_id:
-        raise HTTPException(status_code=400, detail="This code belongs to a different staff member.")
 
-    # Avoid a unique-key clash if this (staff, device) was authorized before.
+    # Replace any prior authorization for this physical device.
     await db.device_activations.delete_many(
-        {"user_id": payload.waiter_id, "device_id": activation["device_id"], "id": {"$ne": activation["id"]}}
+        {"device_id": activation["device_id"], "status": "active"}
     )
+    device_name = payload.device_name or activation.get("device_name") or "Waiter device"
     await db.device_activations.update_one(
         {"_id": activation["_id"]},
         {
             "$set": {
                 "user_id": payload.waiter_id,
-                "cafe_id": waiter["cafe_id"],
+                "cafe_id": cafe_id,
                 "status": "active",
-                "device_name": f"{waiter['name']}'s device",
+                "device_name": device_name,
                 "activated_by": current_user.get("user_id"),
                 "activated_at": utcnow().isoformat(),
             },
             "$unset": {"expires_at": ""},  # active rows must never be TTL-purged
         },
     )
-    return {
-        "success": True,
-        "message": f"Device activated for {waiter['name']}.",
-        "waiter": {"id": waiter["id"], "name": waiter["name"], "username": waiter.get("username")},
-    }
+    return {"success": True, "message": f'Device "{device_name}" activated.'}
 
 
-@router.get("/waiters/devices", response_model=List[DeviceActivation])
+@router.get("/waiters/devices")
 async def list_devices(current_user: dict = Depends(_MANAGER)):
-    return await db.device_activations.find(
+    """Active paired devices for the cafe, each with its assigned waiter (if any)."""
+    rows = await db.device_activations.find(
         {"cafe_id": current_user["cafe_id"], "status": "active"}, {"_id": 0}
     ).to_list(1000)
+    for r in rows:
+        r["assigned_user"] = await _assigned_user(r)
+    return rows
+
+
+@router.patch("/waiters/devices/{activation_id}")
+async def assign_device(activation_id: str, payload: DeviceAssign, current_user: dict = Depends(_MANAGER)):
+    """Set/clear the current waiter on a device and/or rename it. user_id=None
+    clears the assignment (device becomes ordering-only)."""
+    cafe_id = current_user["cafe_id"]
+    activation = await db.device_activations.find_one(
+        {"id": activation_id, "cafe_id": cafe_id, "status": "active"}, {"_id": 0}
+    )
+    if not activation:
+        raise HTTPException(status_code=404, detail="Device not found.")
+
+    updates: dict = {}
+    fields = payload.model_dump(exclude_unset=True)
+    if "user_id" in fields:
+        if fields["user_id"]:
+            waiter = await db.users.find_one(
+                {"id": fields["user_id"], "cafe_id": cafe_id, "role": {"$in": STAFF_ROLES}}, {"_id": 0}
+            )
+            if not waiter or not waiter.get("is_active", True):
+                raise HTTPException(status_code=404, detail="Staff member not found or inactive.")
+        updates["user_id"] = fields["user_id"]
+    if "device_name" in fields and fields["device_name"]:
+        updates["device_name"] = fields["device_name"].strip()
+
+    if updates:
+        await db.device_activations.update_one({"id": activation_id}, {"$set": updates})
+
+    fresh = await db.device_activations.find_one({"id": activation_id}, {"_id": 0})
+    fresh["assigned_user"] = await _assigned_user(fresh)
+    return fresh
+
+
+@router.post("/waiters/devices/logout")
+async def logout_device(payload: DeviceLogout, current_user: dict = Depends(get_current_user)):
+    """Device signs out: keep the pairing but mark it logged-out for the panel."""
+    await db.device_activations.update_one(
+        {"device_id": payload.device_id, "status": "active"},
+        {"$set": {"signed_in": False, "last_logout": utcnow()}},
+    )
+    return {"message": "Signed out."}
 
 
 @router.delete("/waiters/devices/{activation_id}")
@@ -301,6 +351,8 @@ async def revoke_device(activation_id: str, current_user: dict = Depends(_MANAGE
     return {"message": "Device revoked."}
 
 
+# ---- Staff lifecycle ----
+
 async def _find_staff_or_404(waiter_id: str, cafe_id: str) -> dict:
     staff = await db.users.find_one(
         {"id": waiter_id, "cafe_id": cafe_id, "role": {"$in": STAFF_ROLES}}, {"_id": 0}
@@ -312,17 +364,17 @@ async def _find_staff_or_404(waiter_id: str, cafe_id: str) -> dict:
 
 @router.post("/waiters/{waiter_id}/deactivate")
 async def deactivate_waiter(waiter_id: str, current_user: dict = Depends(_MANAGER)):
-    """Soft-disable a staff account: blocks login and revokes their devices, but
-    keeps the record so it can be reactivated later."""
+    """Soft-disable a staff member and unassign them from any devices (which stay
+    paired, just ordering-only until someone else is assigned)."""
     await _find_staff_or_404(waiter_id, current_user["cafe_id"])
     await db.users.update_one({"id": waiter_id}, {"$set": {"is_active": False}})
-    await db.device_activations.delete_many({"user_id": waiter_id})
+    await db.device_activations.update_many({"user_id": waiter_id}, {"$set": {"user_id": None}})
     return {"message": "Staff member deactivated."}
 
 
 @router.post("/waiters/{waiter_id}/activate")
 async def reactivate_waiter(waiter_id: str, current_user: dict = Depends(_MANAGER)):
-    """Re-enable a previously deactivated staff account."""
+    """Re-enable a previously deactivated staff member."""
     await _find_staff_or_404(waiter_id, current_user["cafe_id"])
     await db.users.update_one({"id": waiter_id}, {"$set": {"is_active": True}})
     return {"message": "Staff member reactivated."}
@@ -330,8 +382,8 @@ async def reactivate_waiter(waiter_id: str, current_user: dict = Depends(_MANAGE
 
 @router.delete("/waiters/{waiter_id}")
 async def delete_waiter(waiter_id: str, current_user: dict = Depends(_MANAGER)):
-    """Permanently delete a staff account and all its device authorizations."""
+    """Delete a staff member; any devices they were on stay paired but unassigned."""
     await _find_staff_or_404(waiter_id, current_user["cafe_id"])
     await db.users.delete_one({"id": waiter_id})
-    await db.device_activations.delete_many({"user_id": waiter_id})
+    await db.device_activations.update_many({"user_id": waiter_id}, {"$set": {"user_id": None}})
     return {"message": "Staff member deleted."}

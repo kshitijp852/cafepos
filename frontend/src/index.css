@@ -30,6 +30,8 @@
         --danger-foreground: 48 20% 99%;
         --destructive: 4 72% 48%;
         --destructive-foreground: 48 20% 99%;
+        --info: 214 80% 47%;
+        --info-foreground: 48 20% 99%;
 
         --border: 48 10% 87%;
         --input: 48 10% 85%;
@@ -66,6 +68,8 @@
         --danger-foreground: 60 6% 8%;
         --destructive: 4 70% 55%;
         --destructive-foreground: 60 6% 8%;
+        --info: 210 85% 62%;
+        --info-foreground: 60 6% 8%;
         --border: 60 4% 20%;
         --input: 60 4% 22%;
         --ring: 48 20% 80%;
@@ -104,4 +108,35 @@ code {
         transition-duration: 0.01ms !important;
         scroll-behavior: auto !important;
     }
+}
+
+/* Sonner toast: shrinking progress bar showing time-until-dismiss.
+   Duration is fixed to the Toaster default (4s); pauses while hovered.
+   Square corners + neutral ink bar per design system (color is functional only). */
+[data-sonner-toast] {
+    position: relative;
+    overflow: hidden;
+    border-radius: 0 !important;
+}
+
+[data-sonner-toast]::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    width: 100%;
+    transform-origin: left;
+    background: hsl(var(--foreground) / 0.4);
+    animation: toast-progress 4s linear forwards;
+}
+
+/* Sonner pauses its dismiss timer on hover — pause the bar to match. */
+[data-sonner-toaster]:hover [data-sonner-toast]::after {
+    animation-play-state: paused;
+}
+
+@keyframes toast-progress {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
 }

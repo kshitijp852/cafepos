@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 import { errorMessage } from "@/api/client";
 import { confirmPasswordReset } from "@/api/endpoints";

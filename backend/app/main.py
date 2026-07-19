@@ -12,6 +12,7 @@ from app.db.mongo import client, db
 from app.routers import (
     auth,
     bills,
+    cafe,
     health,
     inventory,
     menu,
@@ -57,6 +58,6 @@ app.add_middleware(
 register_exception_handlers(app)
 
 api_router = APIRouter(prefix="/api")
-for module in (health, auth, waiters, menu, tables, orders, bills, reservations, sessions, reports, inventory, printer):
+for module in (health, auth, cafe, waiters, menu, tables, orders, bills, reservations, sessions, reports, inventory, printer):
     api_router.include_router(module.router)
 app.include_router(api_router)

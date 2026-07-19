@@ -34,6 +34,16 @@ async def create_order(payload: OrderCreate, current_user: dict = Depends(get_cu
     tax = subtotal * tax_pct / 100
     total = subtotal + tax
 
+    # A device session attributes orders to whoever the manager has assigned to it
+    # (or no one — ordering-only). Manager sessions use the client-supplied waiter.
+    if current_user.get("device_id"):
+        waiter_id = current_user.get("user_id")
+        waiter = await db.users.find_one({"id": waiter_id}, {"_id": 0, "name": 1}) if waiter_id else None
+        waiter_name = waiter["name"] if waiter else None
+    else:
+        waiter_id = payload.waiter_id
+        waiter_name = payload.waiter_name
+
     order = Order(
         cafe_id=cafe_id,
         table_id=payload.table_id,
@@ -43,12 +53,18 @@ async def create_order(payload: OrderCreate, current_user: dict = Depends(get_cu
         tax_percentage=tax_pct,
         total=total,
         status=payload.status,
-        waiter_id=payload.waiter_id,
-        waiter_name=payload.waiter_name,
+        waiter_id=waiter_id,
+        waiter_name=waiter_name,
     )
     await db.orders.insert_one(to_mongo(order))
 
     if payload.table_id:
+        # Stamp the sitting's start on the FIRST order only (seated_at is null),
+        # so the dwell timer measures from when the customer sat, not the latest order.
+        await db.tables.update_one(
+            {"id": payload.table_id, "cafe_id": cafe_id, "seated_at": None},
+            {"$set": {"seated_at": datetime.now(timezone.utc).isoformat()}},
+        )
         await db.tables.update_one(
             {"id": payload.table_id, "cafe_id": cafe_id},
             {"$set": {"status": TableStatus.occupied.value, "current_order_id": order.id}},
@@ -110,7 +126,7 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate, current
     if is_terminal(target) and order.get("table_id"):
         await db.tables.update_one(
             {"id": order["table_id"]},
-            {"$set": {"status": TableStatus.available.value, "current_order_id": None}},
+            {"$set": {"status": TableStatus.available.value, "current_order_id": None, "seated_at": None}},
         )
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
@@ -126,7 +142,7 @@ async def cancel_order(order_id: str, current_user: dict = Depends(get_current_u
     if order.get("table_id"):
         await db.tables.update_one(
             {"id": order["table_id"]},
-            {"$set": {"status": TableStatus.available.value, "current_order_id": None}},
+            {"$set": {"status": TableStatus.available.value, "current_order_id": None, "seated_at": None}},
         )
     await db.orders.update_one({"id": order_id}, {"$set": {"status": OrderStatus.cancelled.value}})
     return {"message": "Order cancelled successfully"}

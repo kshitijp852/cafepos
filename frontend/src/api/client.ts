@@ -3,7 +3,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 
-import { clearAuth, getRefreshToken, getToken, setTokens } from "@/auth/storage";
+import { clearAuth, getRefreshToken, getToken, scopeForPath, setTokens } from "@/auth/storage";
 
 const BASE = `${import.meta.env.VITE_BACKEND_URL}/api`;
 
@@ -62,9 +62,10 @@ api.interceptors.response.use(
         original.headers.Authorization = `Bearer ${newToken}`;
         return api(original);
       }
-      // Refresh failed — force re-login.
+      // Refresh failed — force re-login into the correct app (waiter vs manager).
       clearAuth();
-      if (window.location.pathname !== "/login") window.location.assign("/login");
+      const loginPath = scopeForPath(window.location.pathname) === "waiter" ? "/waiter" : "/login";
+      if (window.location.pathname !== loginPath) window.location.assign(loginPath);
     }
     return Promise.reject(error);
   },

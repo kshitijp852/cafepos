@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { GridFour, Stack, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 import { errorMessage } from "@/api/client";
 import { createFloor, createTable, createTablesBulk, deleteTable, updateTable } from "@/api/endpoints";
@@ -120,15 +120,13 @@ export function TablesPage() {
     if (Number.isNaN(capacity) || capacity < 1) return toast.error("Seats must be at least 1.");
     setBusyBulk(true);
     try {
-      const created = await createTablesBulk({
+      await createTablesBulk({
         floor_id: bulk.floor_id,
         count,
         capacity,
         prefix: bulk.prefix,
         start,
       });
-      const skipped = count - created.length;
-      toast.success(`Added ${created.length} table(s)${skipped ? `, skipped ${skipped} existing` : ""}`);
       await invalidate(["tables"]);
     } catch (err) {
       toast.error(errorMessage(err, "Could not add tables"));

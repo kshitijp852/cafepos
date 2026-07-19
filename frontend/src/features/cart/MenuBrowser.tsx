@@ -28,14 +28,14 @@ export function MenuBrowser({ items, categories, onAdd, onlyAvailable = false }:
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 space-y-3 border-b border-border">
+      <div className="sticky top-0 z-10 space-y-3 border-b border-border bg-background p-4">
         <div className="relative">
-          <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <MagnifyingGlass size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search menu…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="pl-9"
+            className="h-11 bg-secondary pl-10"
           />
         </div>
         <div className="flex flex-wrap gap-2">

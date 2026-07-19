@@ -1,14 +1,22 @@
 import { useState } from "react";
 import { CalendarPlus, X } from "@phosphor-icons/react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 import { errorMessage } from "@/api/client";
 import { cancelReservation, createReservation, type ReservationInput } from "@/api/endpoints";
-import { useInvalidate, useReservations, useTables } from "@/api/queries";
+import { useFloors, useInvalidate, useReservations, useTables } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const EMPTY: ReservationInput = {
@@ -24,6 +32,7 @@ const EMPTY: ReservationInput = {
 export function ReservationsPage() {
   const { data: reservations = [] } = useReservations();
   const { data: tables = [] } = useTables();
+  const { data: floors = [] } = useFloors();
   const invalidate = useInvalidate();
   const [form, setForm] = useState<ReservationInput>(EMPTY);
 
@@ -76,11 +85,20 @@ export function ReservationsPage() {
                 <SelectValue placeholder="Select table" />
               </SelectTrigger>
               <SelectContent>
-                {tables.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name} (seats {t.capacity})
-                  </SelectItem>
-                ))}
+                {floors.map((floor) => {
+                  const floorTables = tables.filter((t) => t.floor_id === floor.id);
+                  if (floorTables.length === 0) return null;
+                  return (
+                    <SelectGroup key={floor.id}>
+                      <SelectLabel>{floor.name}</SelectLabel>
+                      {floorTables.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name} (seats {t.capacity})
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>

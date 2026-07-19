@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Warning, PencilSimple, Plus, Trash, UploadSimple } from "@phosphor-icons/react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 import { errorMessage } from "@/api/client";
 import {

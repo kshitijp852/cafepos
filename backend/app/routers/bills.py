@@ -9,10 +9,13 @@ from app.db.mongo import db
 from app.db.serialization import to_mongo
 from app.models.bill import Bill, BillCreate
 from app.models.common import OrderStatus, SessionStatus, TableStatus
+from app.core.config import get_settings
 from app.services.billing import calculate_bill_hash, next_bill_number
 from app.services.cafe import get_tax_percentage
+from app.services.phone import to_e164
 
 router = APIRouter(prefix="/bills", tags=["bills"])
+settings = get_settings()
 
 
 @router.post("", response_model=Bill)
@@ -36,6 +39,15 @@ async def create_bill(payload: BillCreate, current_user: dict = Depends(get_curr
             waiter_id = order.get("waiter_id")
             waiter_name = order.get("waiter_name")
 
+    # How long the customer occupied the table (first order -> now), for records.
+    dwell_seconds = None
+    if payload.table_id:
+        tdoc = await db.tables.find_one({"id": payload.table_id}, {"_id": 0, "seated_at": 1})
+        seated = tdoc.get("seated_at") if tdoc else None
+        if seated:
+            seated_dt = datetime.fromisoformat(seated) if isinstance(seated, str) else seated
+            dwell_seconds = max(0, int((timestamp - seated_dt).total_seconds()))
+
     bill = Bill(
         bill_number=bill_number,
         cafe_id=cafe_id,
@@ -50,6 +62,12 @@ async def create_bill(payload: BillCreate, current_user: dict = Depends(get_curr
         order_id=payload.order_id,
         waiter_id=waiter_id,
         waiter_name=waiter_name,
+        dwell_seconds=dwell_seconds,
+        customer_name=(payload.customer_name or "").strip() or None,
+        # Normalize to E.164 for messaging; fall back to the trimmed raw input so a
+        # non-standard number is never silently dropped.
+        customer_phone=to_e164(payload.customer_phone, settings.default_country_code)
+        or ((payload.customer_phone or "").strip() or None),
         created_at=timestamp,
     )
     await db.bills.insert_one(to_mongo(bill))
@@ -61,7 +79,7 @@ async def create_bill(payload: BillCreate, current_user: dict = Depends(get_curr
     if payload.table_id:
         await db.tables.update_one(
             {"id": payload.table_id},
-            {"$set": {"status": TableStatus.available.value, "current_order_id": None}},
+            {"$set": {"status": TableStatus.available.value, "current_order_id": None, "seated_at": None}},
         )
 
     # Accrue into the open day session. Increment first, then derive expected_cash

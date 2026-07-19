@@ -6,6 +6,8 @@ from app.core.config import get_settings
 from app.core.email import otp_email, reset_email, send_email
 from app.core.security import (
     create_access_token,
+    create_device_refresh_token,
+    create_device_token,
     create_refresh_token,
     decode_token,
     generate_otp,
@@ -191,6 +193,19 @@ async def reset_confirm(payload: ResetConfirm):
 async def refresh(payload: TokenRefresh):
     """Exchange a valid refresh token for a fresh access + refresh token pair."""
     data = decode_token(payload.refresh_token, expected_type="refresh")
+
+    # Device refresh tokens have no user of their own — re-mint if still paired.
+    if data.get("device_id") and not data.get("user_id"):
+        device = await db.device_activations.find_one(
+            {"device_id": data["device_id"], "status": "active"}, {"_id": 0}
+        )
+        if not device:
+            raise HTTPException(status_code=401, detail="Device is no longer authorized.")
+        return {
+            "token": create_device_token(data["device_id"], data["cafe_id"]),
+            "refresh_token": create_device_refresh_token(data["device_id"], data["cafe_id"]),
+        }
+
     user = await db.users.find_one({"id": data["user_id"]}, {"_id": 0})
     if not user or not user.get("is_active"):
         raise HTTPException(status_code=401, detail="User not found or deactivated.")

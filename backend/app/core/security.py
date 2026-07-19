@@ -4,11 +4,13 @@ Two token types are issued: short-lived ``access`` tokens and long-lived
 ``refresh`` tokens. Every token carries a ``type`` claim so a refresh token can
 never be used where an access token is expected (and vice versa).
 """
+import base64
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
+from cryptography.fernet import Fernet
 from fastapi import HTTPException
 from passlib.context import CryptContext
 
@@ -16,6 +18,25 @@ from app.core.config import get_settings
 
 settings = get_settings()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _fernet() -> Fernet:
+    """Fernet cipher for reversible staff-password storage. Uses the configured
+    key, or derives a stable one from jwt_secret so no extra config is needed."""
+    key = settings.credential_enc_key.strip()
+    if not key:
+        key = base64.urlsafe_b64encode(hashlib.sha256(settings.jwt_secret.encode()).digest()).decode()
+    return Fernet(key)
+
+
+def encrypt_secret(plain: str) -> str:
+    """Encrypt a recoverable secret (staff password) for at-rest storage."""
+    return _fernet().encrypt(plain.encode()).decode()
+
+
+def decrypt_secret(token: str) -> str:
+    """Decrypt a value produced by encrypt_secret."""
+    return _fernet().decrypt(token.encode()).decode()
 
 
 def get_password_hash(secret: str) -> str:
@@ -83,6 +104,24 @@ def create_access_token(user_id: str, cafe_id: str, role: str) -> str:
 def create_refresh_token(user_id: str, cafe_id: str, role: str) -> str:
     return _create_token(
         {"user_id": user_id, "cafe_id": cafe_id, "role": role},
+        timedelta(days=settings.jwt_refresh_expiry_days),
+        "refresh",
+    )
+
+
+def create_device_token(device_id: str, cafe_id: str) -> str:
+    """Access token for a paired ordering device (no user identity of its own —
+    the current waiter is resolved live from the device's activation record)."""
+    return _create_token(
+        {"device_id": device_id, "cafe_id": cafe_id, "role": "staff"},
+        timedelta(hours=settings.jwt_expiry_hours),
+        "access",
+    )
+
+
+def create_device_refresh_token(device_id: str, cafe_id: str) -> str:
+    return _create_token(
+        {"device_id": device_id, "cafe_id": cafe_id, "role": "staff"},
         timedelta(days=settings.jwt_refresh_expiry_days),
         "refresh",
     )

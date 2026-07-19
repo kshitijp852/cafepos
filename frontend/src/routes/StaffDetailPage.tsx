@@ -1,23 +1,60 @@
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "@phosphor-icons/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, PencilSimple } from "@phosphor-icons/react";
+import { toast } from "@/components/ui/sonner";
 
-import { getWaiterStats } from "@/api/endpoints";
+import { errorMessage } from "@/api/client";
+import { getWaiterStats, updateWaiter } from "@/api/endpoints";
 import { useTables } from "@/api/queries";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { inr, timeAgo } from "@/lib/format";
+
+const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 export function StaffDetailPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { data: tables = [] } = useTables();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["waiterStats", id],
     queryFn: () => getWaiterStats(id),
     enabled: !!id,
   });
+
+  const [edit, setEdit] = useState<{ name: string; username: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const openEdit = () => data && setEdit({ name: data.staff.name, username: data.staff.username ?? "" });
+
+  const saveEdit = async () => {
+    if (!edit) return;
+    if (!edit.name.trim()) return toast.error("Enter a name.");
+    if (!edit.username.trim()) return toast.error("Enter a username.");
+    setSaving(true);
+    try {
+      await updateWaiter(id, {
+        name: edit.name.trim(),
+        username: edit.username.trim(),
+      });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["waiterStats", id] }),
+        qc.invalidateQueries({ queryKey: ["waiters"] }),
+      ]);
+      setEdit(null);
+      toast.success("Staff updated");
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to update staff"));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const tableName = (tid: string | null) => (tid ? tables.find((t) => t.id === tid)?.name ?? "—" : "Counter");
 
@@ -46,9 +83,14 @@ export function StaffDetailPage() {
             {data.last_active ? ` · last active ${timeAgo(data.last_active)}` : ""}
           </p>
         </div>
-        <Badge variant={data.staff.is_active === false ? "outline" : "success"} className="ml-auto">
-          {data.staff.is_active === false ? "Inactive" : "Active"}
-        </Badge>
+        <div className="ml-auto flex items-center gap-3">
+          <Badge variant={data.staff.is_active === false ? "outline" : "success"}>
+            {data.staff.is_active === false ? "Inactive" : "Active"}
+          </Badge>
+          <Button variant="outline" size="sm" onClick={openEdit}>
+            <PencilSimple size={15} /> Edit
+          </Button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -131,6 +173,39 @@ export function StaffDetailPage() {
           </Table>
         </div>
       </section>
+
+      {/* Edit staff */}
+      <Dialog open={!!edit} onOpenChange={(o) => !o && !saving && setEdit(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-serif">Edit {data.staff.name}</DialogTitle>
+          </DialogHeader>
+          {edit && (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label>Name</Label>
+                <Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <Label>Username</Label>
+                <Input
+                  autoCapitalize="none"
+                  value={edit.username}
+                  onChange={(e) => setEdit({ ...edit, username: slugify(e.target.value) })}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEdit(null)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={saveEdit} disabled={saving}>
+              {saving ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
