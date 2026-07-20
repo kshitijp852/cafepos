@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { inr } from "@/lib/format";
+import { formatBillNo, inr } from "@/lib/format";
 
 export function HistoryPage() {
   const { data: bills = [] } = useBills(100);
@@ -126,7 +126,7 @@ export function HistoryPage() {
             <TableBody>
               {bills.map((b) => (
                 <TableRow key={b.id}>
-                  <TableCell className="font-medium nums">#{b.bill_number}</TableCell>
+                  <TableCell className="font-medium nums">#{formatBillNo(b)}</TableCell>
                   <TableCell className="text-sm text-muted-foreground nums">
                     {b.items.reduce((n, i) => n + i.quantity, 0)} items
                   </TableCell>

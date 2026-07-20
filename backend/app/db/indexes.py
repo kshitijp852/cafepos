@@ -18,8 +18,12 @@ _INDEXES = [
         "partialFilterExpression": {"username": {"$type": "string"}},
     }),
     ("users", [("cafe_id", ASCENDING), ("role", ASCENDING)], {}),
-    ("bills", [("cafe_id", ASCENDING), ("bill_number", ASCENDING)], {"unique": True}),
+    # Unique per (cafe, series, serial): each device series is its own consecutive
+    # invoice line, so C-1 and B2-1 coexist while duplicates within a series can't.
+    ("bills", [("cafe_id", ASCENDING), ("series", ASCENDING), ("bill_number", ASCENDING)], {"unique": True}),
     ("bills", [("cafe_id", ASCENDING), ("created_at", DESCENDING)], {}),
+    # Per-device invoice-serial series registry + counters.
+    ("bill_series", [("cafe_id", ASCENDING), ("series_code", ASCENDING)], {"unique": True}),
     ("orders", [("cafe_id", ASCENDING), ("status", ASCENDING)], {}),
     ("categories", [("cafe_id", ASCENDING)], {}),
     ("menu_items", [("cafe_id", ASCENDING), ("category_id", ASCENDING)], {}),
@@ -46,8 +50,26 @@ _INDEXES = [
 
 
 async def ensure_indexes(db) -> None:
+    await _migrate_bill_series(db)
     for collection, keys, opts in _INDEXES:
         try:
             await db[collection].create_index(keys, **opts)
         except Exception as exc:  # pragma: no cover - defensive, logged not fatal
             logger.warning("Could not create index on %s %s: %s", collection, keys, exc)
+
+
+async def _migrate_bill_series(db) -> None:
+    """Prepare bills for the (cafe_id, series, bill_number) unique index.
+
+    Backfills the new ``series`` field to "" on legacy bills so old and new rows
+    share one index key space, and drops the old (cafe_id, bill_number) unique
+    index which would otherwise reject a series-prefixed collision-free number.
+    """
+    try:
+        await db.bills.update_many({"series": {"$exists": False}}, {"$set": {"series": ""}})
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Bill series backfill failed: %s", exc)
+    try:
+        await db.bills.drop_index("cafe_id_1_bill_number_1")
+    except Exception:  # index may not exist (fresh db) — fine
+        pass

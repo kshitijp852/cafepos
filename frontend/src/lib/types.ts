@@ -10,6 +10,7 @@ export type OrderStatus =
   | "completed"
   | "cancelled";
 export type TableStatus = "available" | "occupied" | "reserved";
+export type FoodType = "veg" | "non_veg" | "egg";
 
 export interface User {
   id: string;
@@ -44,6 +45,7 @@ export interface MenuItem {
   description?: string | null;
   image_url?: string | null;
   available: boolean;
+  food_type?: FoodType | null;
   cafe_id: string;
 }
 
@@ -60,6 +62,10 @@ export interface Cafe {
   phone?: string | null;
   gst_number?: string | null;
   tax_percentage: number;
+  cgst_percentage: number;
+  sgst_percentage: number;
+  packing_charge: number;
+  delivery_charge: number;
 }
 
 export interface Table {
@@ -103,6 +109,8 @@ export interface Order {
 export interface Bill {
   id: string;
   bill_number: number;
+  // Per-device invoice-serial series prefix (e.g. "C"); "" for the default line.
+  series?: string;
   cafe_id: string;
   table_id?: string | null;
   items: OrderItem[];
@@ -116,6 +124,12 @@ export interface Bill {
   dwell_seconds?: number | null;
   customer_name?: string | null;
   customer_phone?: string | null;
+  cgst?: number;
+  sgst?: number;
+  cgst_percentage?: number;
+  sgst_percentage?: number;
+  packing_charge?: number;
+  delivery_charge?: number;
   created_at: string;
 }
 

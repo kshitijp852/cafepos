@@ -5,7 +5,32 @@ import axios, {
 
 import { clearAuth, getRefreshToken, getToken, scopeForPath, setTokens } from "@/auth/storage";
 
-const BASE = `${import.meta.env.VITE_BACKEND_URL}/api`;
+// Backend origin is resolved at runtime, not baked in at build time: a
+// localStorage override (set on the device, e.g. from Settings) wins over the
+// build-time VITE_BACKEND_URL. This lets the same bundle be repointed without a
+// rebuild. Changing the override requires a reload to take effect (BASE and the
+// axios instance are computed once at module load).
+const BACKEND_URL_KEY = "pos_backend_url";
+
+export function getBackendUrl(): string {
+  try {
+    const override = localStorage.getItem(BACKEND_URL_KEY);
+    if (override) return override.replace(/\/+$/, "");
+  } catch {
+    /* ignore private-mode / disabled storage */
+  }
+  return (import.meta.env.VITE_BACKEND_URL ?? "").replace(/\/+$/, "");
+}
+
+export function setBackendUrl(url: string) {
+  try {
+    localStorage.setItem(BACKEND_URL_KEY, url.replace(/\/+$/, ""));
+  } catch {
+    /* ignore */
+  }
+}
+
+const BASE = `${getBackendUrl()}/api`;
 
 export const api = axios.create({ baseURL: BASE });
 

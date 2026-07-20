@@ -1,5 +1,14 @@
 export const inr = (n: number | null | undefined): string => `₹${(n ?? 0).toFixed(2)}`;
 
+// A bill's display number: prefixed with its device series when set (e.g.
+// "C-42"), or the bare serial for the default/legacy line.
+export function formatBillNo(
+  bill: { series?: string | null; bill_number: number } | null | undefined,
+): string {
+  if (!bill) return "";
+  return bill.series ? `${bill.series}-${bill.bill_number}` : `${bill.bill_number}`;
+}
+
 // Elapsed duration as m:ss (under an hour) or h:mm:ss. For live table dwell timers.
 export function formatDuration(totalSeconds: number): string {
   const s = Math.max(0, Math.floor(totalSeconds));

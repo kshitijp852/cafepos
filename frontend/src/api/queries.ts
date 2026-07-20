@@ -19,7 +19,12 @@ export const keys = {
   waiterDevices: ["waiterDevices"] as const,
   cafe: ["cafe"] as const,
   device: ["device", "me"] as const,
+  reconciliation: ["reconciliation"] as const,
 };
+
+// Conflicts left by offline replay (duplicate orders / double-settled bills).
+export const useReconciliation = () =>
+  useQuery({ queryKey: keys.reconciliation, queryFn: api.getReconciliation, refetchInterval: 15000 });
 
 export const useCafe = () => useQuery({ queryKey: keys.cafe, queryFn: api.getCafe, staleTime: 300000 });
 

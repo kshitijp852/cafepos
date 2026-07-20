@@ -12,8 +12,10 @@ import { StaffPage } from "@/routes/StaffPage";
 import { StaffDetailPage } from "@/routes/StaffDetailPage";
 import { ReservationsPage } from "@/routes/ReservationsPage";
 import { HistoryPage } from "@/routes/HistoryPage";
+import { ReconciliationPage } from "@/routes/ReconciliationPage";
 import { AnalyticsPage } from "@/routes/AnalyticsPage";
 import { InventoryPage } from "@/routes/InventoryPage";
+import { SettingsPage } from "@/routes/SettingsPage";
 import { WaiterAuthPage } from "@/routes/waiter/WaiterAuthPage";
 import { WaiterTablesPage } from "@/routes/waiter/WaiterTablesPage";
 import { WaiterOrderPage } from "@/routes/waiter/WaiterOrderPage";
@@ -52,7 +54,9 @@ export const router = createBrowserRouter([
           { path: "/reservations", element: <ReservationsPage /> },
           { path: "/analytics", element: <AnalyticsPage /> },
           { path: "/history", element: <HistoryPage /> },
+          { path: "/reconcile", element: <ReconciliationPage /> },
           { path: "/inventory", element: <InventoryPage /> },
+          { path: "/settings", element: <SettingsPage /> },
         ],
       },
     ],

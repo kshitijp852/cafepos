@@ -7,6 +7,7 @@ import { errorMessage } from "@/api/client";
 import { createOrder } from "@/api/endpoints";
 import { useCategories, useMenuItems, useTables } from "@/api/queries";
 import { Button } from "@/components/ui/button";
+import { OfflineStatus } from "@/components/OfflineStatus";
 import { CartPanel } from "@/features/cart/CartPanel";
 import { MenuBrowser } from "@/features/cart/MenuBrowser";
 import { useCart } from "@/features/cart/useCart";
@@ -54,6 +55,9 @@ export function WaiterOrderPage() {
           Tables
         </Button>
         <h1 className="font-serif text-xl font-bold">Table {table?.name ?? tableId}</h1>
+        <div className="ml-auto">
+          <OfflineStatus />
+        </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden">

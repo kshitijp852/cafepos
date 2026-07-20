@@ -1,9 +1,12 @@
 import { api } from "./client";
+import { idempotentPost } from "@/lib/offlineQueue";
+import { drawSerial } from "@/lib/series";
 import type {
   AuthResponse,
   Bill,
   Cafe,
   Category,
+  FoodType,
   DailyReport,
   DaySession,
   DeviceActivation,
@@ -67,6 +70,7 @@ export type MenuItemInput = {
   category_id: string;
   description?: string;
   available?: boolean;
+  food_type?: FoodType | null;
 };
 export const getMenuItems = () => api.get<MenuItem[]>("/menu/items").then((r) => r.data);
 export const createMenuItem = (d: MenuItemInput) =>
@@ -112,7 +116,25 @@ export type OrderInput = {
 };
 export const getOrders = (status: OrderStatus = "active") =>
   api.get<Order[]>(`/orders`, { params: { status } }).then((r) => r.data);
-export const createOrder = (d: OrderInput) => api.post<Order>("/orders", d).then((r) => r.data);
+// Routed through the offline queue: if the device is offline the order is saved
+// locally and an optimistic Order is returned so the kitchen flow continues; it
+// syncs (idempotently) on reconnect.
+export const createOrder = (d: OrderInput) =>
+  idempotentPost<Order>("/orders", { ...d }, (id) => ({
+    id,
+    cafe_id: "",
+    table_id: d.table_id ?? null,
+    items: d.items,
+    subtotal: d.items.reduce((s, i) => s + i.price * i.quantity, 0),
+    tax: 0,
+    tax_percentage: 0,
+    total: d.items.reduce((s, i) => s + i.price * i.quantity, 0),
+    status: d.status ?? "active",
+    waiter_id: d.waiter_id ?? null,
+    waiter_name: d.waiter_name ?? null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }));
 export const updateOrder = (id: string, items: OrderItem[]) =>
   api.put<Order>(`/orders/${id}`, { items }).then((r) => r.data);
 export const updateOrderStatus = (id: string, status: OrderStatus) =>
@@ -124,6 +146,8 @@ export type BillInput = {
   table_id?: string | null;
   items: OrderItem[];
   tax_percentage?: number;
+  packing_charge?: number;
+  delivery_charge?: number;
   payment_method: PaymentMethod;
   order_id?: string | null;
   customer_name?: string;
@@ -132,7 +156,69 @@ export type BillInput = {
 export const getBills = (limit = 100, dateFilter?: string) =>
   api.get<Bill[]>("/bills", { params: { limit, date_filter: dateFilter } }).then((r) => r.data);
 export const getBill = (id: string) => api.get<Bill>(`/bills/${id}`).then((r) => r.data);
-export const createBill = (d: BillInput) => api.post<Bill>("/bills", d).then((r) => r.data);
+// Settlement draws its invoice serial from this device's reserved series block
+// (works offline) and goes through the offline queue: a client id keeps replay
+// idempotent, and if the device is offline the bill is saved locally with its
+// real device-allocated serial and an optimistic Bill is returned so the receipt
+// / pickup flow continues. Syncs on reconnect.
+export const createBill = async (d: BillInput): Promise<Bill> => {
+  const { series, bill_number } = await drawSerial();
+  const id = crypto.randomUUID();
+  const subtotal = d.items.reduce((s, i) => s + i.price * i.quantity, 0);
+  const packing = d.packing_charge ?? 0;
+  const delivery = d.delivery_charge ?? 0;
+  const tax = d.tax_percentage ? subtotal * (d.tax_percentage / 100) : 0;
+  return idempotentPost<Bill>("/bills", { ...d, id, series, bill_number }, () => ({
+    id,
+    bill_number,
+    series,
+    cafe_id: "",
+    table_id: d.table_id ?? null,
+    items: d.items,
+    subtotal,
+    tax,
+    tax_percentage: d.tax_percentage ?? 0,
+    total: subtotal + tax + packing + delivery,
+    payment_method: d.payment_method,
+    bill_hash: "",
+    order_id: d.order_id ?? null,
+    packing_charge: packing,
+    delivery_charge: delivery,
+    customer_name: d.customer_name ?? null,
+    customer_phone: d.customer_phone ?? null,
+    created_at: new Date().toISOString(),
+  }));
+};
+
+// ---- Reconciliation (manager) — conflicts from offline replay ----
+export type ConflictOrder = {
+  id: string;
+  status: string;
+  item_count: number;
+  total: number;
+  waiter_name: string | null;
+  created_at: string;
+};
+export type ConflictBill = {
+  id: string;
+  series: string;
+  bill_number: number;
+  total: number;
+  payment_method: string;
+  created_at: string;
+};
+export type Reconciliation = {
+  duplicate_table_orders: { table_id: string; table_name: string | null; orders: ConflictOrder[] }[];
+  double_settled_orders: { order_id: string; bills: ConflictBill[] }[];
+  count: number;
+};
+export const getReconciliation = () => api.get<Reconciliation>("/reconciliation").then((r) => r.data);
+export const resolveTableConflict = (tableId: string, keepOrderId: string) =>
+  api
+    .post(`/reconciliation/tables/${tableId}/resolve`, { keep_order_id: keepOrderId })
+    .then((r) => r.data);
+export const voidBill = (billId: string, reason?: string) =>
+  api.post(`/bills/${billId}/void`, { reason }).then((r) => r.data);
 
 // ---- Reservations ----
 export type ReservationInput = {
@@ -200,6 +286,16 @@ export const printKOT = (orderId: string) =>
 
 // ---- Cafe ----
 export const getCafe = () => api.get<Cafe>("/cafe").then((r) => r.data);
+export const updateCafe = (d: {
+  name?: string;
+  phone?: string;
+  address?: string;
+  gst_number?: string;
+  cgst_percentage?: number;
+  sgst_percentage?: number;
+  packing_charge?: number;
+  delivery_charge?: number;
+}) => api.patch<Cafe>("/cafe", d).then((r) => r.data);
 
 // ---- Staff roster (names only — staff never log in; devices do) ----
 export const getWaiters = () => api.get<User[]>("/waiters").then((r) => r.data);

@@ -3,6 +3,7 @@ import { MagnifyingGlass, Plus } from "@phosphor-icons/react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { FoodTypeMarker } from "@/components/FoodTypeMarker";
 import { inr } from "@/lib/format";
 import type { Category, MenuItem } from "@/lib/types";
 
@@ -68,7 +69,10 @@ export function MenuBrowser({ items, categories, onAdd, onlyAvailable = false }:
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{item.name}</div>
+                    <div className="flex items-center gap-1.5">
+                      <FoodTypeMarker type={item.food_type} size={13} />
+                      <span className="truncate text-sm font-medium">{item.name}</span>
+                    </div>
                     <div className="nums mt-0.5 text-sm font-semibold">{inr(item.price)}</div>
                   </div>
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-success text-success-foreground transition-transform group-hover:scale-110">

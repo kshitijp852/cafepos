@@ -4,14 +4,17 @@ import {
   ChartLineUp,
   ClockCounterClockwise,
   ForkKnife,
+  GearSix,
   GridFour,
   Package,
   ShoppingBag,
   SquaresFour,
   Users,
+  WarningCircle,
   type Icon,
 } from "@phosphor-icons/react";
 
+import { useReconciliation } from "@/api/queries";
 import { cn } from "@/lib/utils";
 
 type NavItem = { to: string; label: string; icon: Icon; end?: boolean };
@@ -24,6 +27,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/dashboard", label: "Floor", icon: SquaresFour },
       { to: "/order", label: "Take Away", icon: ShoppingBag, end: true },
       { to: "/reservations", label: "Reservations", icon: CalendarBlank },
+      { to: "/reconcile", label: "Reconcile", icon: WarningCircle },
     ],
   },
   {
@@ -38,6 +42,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/tables", label: "Tables", icon: GridFour },
       { to: "/staff", label: "Staff", icon: Users },
+      { to: "/settings", label: "Settings", icon: GearSix },
     ],
   },
   {
@@ -50,6 +55,11 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+  // Live count of unresolved offline-replay conflicts, shown as a badge on the
+  // Reconcile link so managers notice when a sync left something to review.
+  const { data: reconciliation } = useReconciliation();
+  const conflictCount = reconciliation?.count ?? 0;
+
   return (
     <nav className="flex-1 overflow-y-auto py-4">
       {NAV_GROUPS.map((group) => (
@@ -58,26 +68,34 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             {group.heading}
           </div>
           <ul>
-            {group.items.map(({ to, label, icon: Icon, end }) => (
-              <li key={to}>
-                <NavLink
-                  to={to}
-                  end={end}
-                  onClick={onNavigate}
-                  className={({ isActive }) =>
-                    cn(
-                      "flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-colors",
-                      isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-foreground/70 hover:bg-accent hover:text-foreground",
-                    )
-                  }
-                >
-                  <Icon size={19} />
-                  <span>{label}</span>
-                </NavLink>
-              </li>
-            ))}
+            {group.items.map(({ to, label, icon: Icon, end }) => {
+              const badge = to === "/reconcile" ? conflictCount : 0;
+              return (
+                <li key={to}>
+                  <NavLink
+                    to={to}
+                    end={end}
+                    onClick={onNavigate}
+                    className={({ isActive }) =>
+                      cn(
+                        "flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-colors",
+                        isActive
+                          ? "bg-primary text-primary-foreground"
+                          : "text-foreground/70 hover:bg-accent hover:text-foreground",
+                      )
+                    }
+                  >
+                    <Icon size={19} />
+                    <span>{label}</span>
+                    {badge > 0 && (
+                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-xs font-semibold text-destructive-foreground">
+                        {badge}
+                      </span>
+                    )}
+                  </NavLink>
+                </li>
+              );
+            })}
           </ul>
         </div>
       ))}

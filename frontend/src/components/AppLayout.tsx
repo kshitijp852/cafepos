@@ -8,6 +8,7 @@ import type { User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { AlertsBell } from "@/components/AlertsBell";
+import { OfflineStatus } from "@/components/OfflineStatus";
 import { SidebarNav, Wordmark } from "@/components/Sidebar";
 
 function initials(name?: string) {
@@ -154,6 +155,7 @@ export function AppLayout() {
           </div>
 
           <div className="flex items-center gap-1">
+            <OfflineStatus />
             <AlertsBell />
             <AccountMenu user={user} onWaiterMode={() => navigate("/waiter")} onLogout={handleLogout} />
           </div>

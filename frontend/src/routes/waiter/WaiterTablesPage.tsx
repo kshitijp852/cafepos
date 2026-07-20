@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DwellTimer } from "@/components/DwellTimer";
+import { OfflineStatus } from "@/components/OfflineStatus";
 import { cn } from "@/lib/utils";
 import { searchFloors } from "@/lib/search";
 import type { Table, TableStatus } from "@/lib/types";
@@ -48,6 +49,7 @@ export function WaiterTablesPage() {
           <Badge variant="outline">Waiter</Badge>
         </div>
         <div className="flex items-center gap-4">
+          <OfflineStatus />
           <span className="hidden text-sm sm:block">
             {assigned ? (
               <>Waiter: <span className="font-medium">{assigned}</span></>

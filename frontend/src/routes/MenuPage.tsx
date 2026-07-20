@@ -9,26 +9,30 @@ import {
   createMenuItem,
   deleteMenuItem,
   requestMenuPurge,
+  updateCafe,
   updateMenuItem,
   type MenuItemInput,
 } from "@/api/endpoints";
-import { useCategories, useInvalidate, useMenuItems } from "@/api/queries";
+import { useCafe, useCategories, useInvalidate, useMenuItems } from "@/api/queries";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FoodTypeMarker } from "@/components/FoodTypeMarker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { parseCsv } from "@/lib/csv";
 import { inr } from "@/lib/format";
-import type { MenuItem } from "@/lib/types";
+import type { FoodType, MenuItem } from "@/lib/types";
 
-const EMPTY: MenuItemInput = { name: "", price: 0, category_id: "", description: "", available: true };
+const EMPTY: MenuItemInput = { name: "", price: 0, category_id: "", description: "", available: true, food_type: null };
+const FOOD_NONE = "none";
 
 export function MenuPage() {
   const { data: categories = [] } = useCategories();
   const { data: items = [] } = useMenuItems();
+  const { data: cafe } = useCafe();
   const invalidate = useInvalidate();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -94,6 +98,7 @@ export function MenuPage() {
       category_id: item.category_id,
       description: item.description ?? "",
       available: item.available,
+      food_type: item.food_type ?? null,
     });
   };
 
@@ -234,6 +239,9 @@ export function MenuPage() {
         </div>
       </section>
 
+      {/* Charges & taxes */}
+      {cafe && <ChargesCard cafe={cafe} onSaved={() => invalidate(["cafe"])} />}
+
       {/* Items table */}
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Items</h2>
@@ -252,7 +260,10 @@ export function MenuPage() {
               {sortedItems.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="px-4">
-                    <div className="font-medium">{item.name}</div>
+                    <div className="flex items-center gap-2">
+                      <FoodTypeMarker type={item.food_type} />
+                      <span className="font-medium">{item.name}</span>
+                    </div>
                     {item.description && <div className="text-xs text-muted-foreground">{item.description}</div>}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{catName(item.category_id)}</TableCell>
@@ -318,6 +329,25 @@ export function MenuPage() {
                         {c.name}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Food type</Label>
+                <Select
+                  value={itemForm.food_type ?? FOOD_NONE}
+                  onValueChange={(v) =>
+                    setItemForm({ ...itemForm, food_type: v === FOOD_NONE ? null : (v as FoodType) })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={FOOD_NONE}>No tag</SelectItem>
+                    <SelectItem value="veg">Veg</SelectItem>
+                    <SelectItem value="non_veg">Non-veg</SelectItem>
+                    <SelectItem value="egg">Egg</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -405,5 +435,69 @@ export function MenuPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function ChargesCard({ cafe, onSaved }: { cafe: import("@/lib/types").Cafe; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    cgst: String(cafe.cgst_percentage ?? 0),
+    sgst: String(cafe.sgst_percentage ?? 0),
+    packing: String(cafe.packing_charge ?? 0),
+    delivery: String(cafe.delivery_charge ?? 0),
+  });
+  const [busy, setBusy] = useState(false);
+
+  const num = (v: string) => Math.max(0, parseFloat(v) || 0);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await updateCafe({
+        cgst_percentage: num(form.cgst),
+        sgst_percentage: num(form.sgst),
+        packing_charge: num(form.packing),
+        delivery_charge: num(form.delivery),
+      });
+      onSaved();
+      toast.success("Charges & taxes updated");
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to save charges"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const totalTax = num(form.cgst) + num(form.sgst);
+
+  return (
+    <section className="border border-border">
+      <div className="border-b border-border px-4 py-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide">Charges &amp; taxes</h2>
+        <p className="text-xs text-muted-foreground">
+          Applied at settlement. Packing/delivery are for take-away &amp; delivery; dine-in is exempt.
+        </p>
+      </div>
+      <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="space-y-1">
+          <Label>CGST %</Label>
+          <Input type="number" min={0} step="0.01" value={form.cgst} onChange={(e) => setForm({ ...form, cgst: e.target.value })} />
+        </div>
+        <div className="space-y-1">
+          <Label>SGST %</Label>
+          <Input type="number" min={0} step="0.01" value={form.sgst} onChange={(e) => setForm({ ...form, sgst: e.target.value })} />
+        </div>
+        <div className="space-y-1">
+          <Label>Packing charge (pc)</Label>
+          <Input type="number" min={0} step="0.01" value={form.packing} onChange={(e) => setForm({ ...form, packing: e.target.value })} />
+        </div>
+        <div className="space-y-1">
+          <Label>Delivery charge (dc)</Label>
+          <Input type="number" min={0} step="0.01" value={form.delivery} onChange={(e) => setForm({ ...form, delivery: e.target.value })} />
+        </div>
+      </div>
+      <div className="flex items-center justify-between border-t border-border px-4 py-3">
+        <span className="text-xs text-muted-foreground">Total GST: <span className="font-semibold text-foreground nums">{totalTax}%</span></span>
+        <Button onClick={save} disabled={busy}>{busy ? "Saving…" : "Save charges"}</Button>
+      </div>
+    </section>
   );
 }

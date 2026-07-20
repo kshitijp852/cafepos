@@ -33,6 +33,9 @@ class Order(DBModel):
 
 
 class OrderCreate(BaseModel):
+    # Client may supply the id so an offline-queued create can be replayed
+    # idempotently (see create_order). Omitted for normal online creates.
+    id: Optional[str] = None
     table_id: Optional[str] = None
     items: List[OrderItem]
     waiter_id: Optional[str] = None

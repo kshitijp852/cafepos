@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.deps import get_current_user
 from app.db.mongo import db
 from app.db.serialization import to_mongo
-from app.models.common import OrderStatus, TableStatus
+from app.models.common import OrderStatus, TableStatus, new_id
 from app.models.order import Order, OrderCreate, OrderStatusUpdate, OrderUpdate
 from app.services.cafe import get_tax_percentage
 from app.services.orders import can_transition, is_terminal
@@ -29,6 +29,14 @@ async def get_orders(
 @router.post("", response_model=Order)
 async def create_order(payload: OrderCreate, current_user: dict = Depends(get_current_user)):
     cafe_id = current_user["cafe_id"]
+
+    # Idempotent replay: an order created offline is queued with a client-generated
+    # id and replayed on reconnect. If that id already exists, return it unchanged.
+    if payload.id:
+        existing = await db.orders.find_one({"id": payload.id, "cafe_id": cafe_id}, {"_id": 0})
+        if existing:
+            return existing
+
     tax_pct = await get_tax_percentage(db, cafe_id)
     subtotal = sum(item.price * item.quantity for item in payload.items)
     tax = subtotal * tax_pct / 100
@@ -45,6 +53,7 @@ async def create_order(payload: OrderCreate, current_user: dict = Depends(get_cu
         waiter_name = payload.waiter_name
 
     order = Order(
+        id=payload.id or new_id(),
         cafe_id=cafe_id,
         table_id=payload.table_id,
         items=payload.items,

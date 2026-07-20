@@ -1,9 +1,12 @@
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 from app.models.common import DBModel, new_id, utcnow
+
+# Indian-standard food marker. None = untagged.
+FoodType = Literal["veg", "non_veg", "egg"]
 
 
 class Category(DBModel):
@@ -25,6 +28,7 @@ class MenuItem(DBModel):
     description: Optional[str] = None
     image_url: Optional[str] = None
     available: bool = True
+    food_type: Optional[FoodType] = None
     cafe_id: str
     variants: Optional[List[dict[str, Any]]] = []
     addons: Optional[List[dict[str, Any]]] = []
@@ -38,5 +42,6 @@ class MenuItemCreate(BaseModel):
     description: Optional[str] = None
     image_url: Optional[str] = None
     available: bool = True
+    food_type: Optional[FoodType] = None
     variants: Optional[List[dict[str, Any]]] = []
     addons: Optional[List[dict[str, Any]]] = []
