@@ -1,13 +1,9 @@
-import { useEffect, useState } from "react";
-import { Printer, Storefront } from "@phosphor-icons/react";
+import { useState } from "react";
+import { Printer } from "@phosphor-icons/react";
+import { Link } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 
-import { errorMessage } from "@/api/client";
-import { updateCafe } from "@/api/endpoints";
-import { useCafe, useInvalidate } from "@/api/queries";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   disconnectPrinter,
   isBluetoothSupported,
@@ -19,102 +15,21 @@ import {
 } from "@/lib/printer";
 
 export function SettingsPage() {
-  const { data: cafe } = useCafe();
-  const invalidate = useInvalidate();
-  const [form, setForm] = useState({ name: "", phone: "", address: "", gst_number: "" });
-  const [busy, setBusy] = useState(false);
-
-  // Seed the form once the cafe loads.
-  useEffect(() => {
-    if (cafe) {
-      setForm({
-        name: cafe.name ?? "",
-        phone: cafe.phone ?? "",
-        address: cafe.address ?? "",
-        gst_number: cafe.gst_number ?? "",
-      });
-    }
-  }, [cafe]);
-
-  const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
-
-  const save = async () => {
-    if (!form.name.trim()) return toast.error("Restaurant name is required.");
-    setBusy(true);
-    try {
-      await updateCafe({
-        name: form.name.trim(),
-        phone: form.phone,
-        address: form.address,
-        gst_number: form.gst_number,
-      });
-      await invalidate(["cafe"]);
-      toast.success("Restaurant details saved");
-    } catch (err) {
-      toast.error(errorMessage(err, "Failed to save settings"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="mx-auto max-w-2xl space-y-8 p-6">
       <div>
-        <h1 className="font-serif text-2xl font-bold">Restaurant settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Name, contact, address, and GST — shown on the app and on printed bills.
-        </p>
+        <h1 className="font-serif text-2xl font-bold">Settings</h1>
+        <p className="text-sm text-muted-foreground">Device setup for this browser.</p>
       </div>
-
-      <section className="border border-border">
-        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-          <Storefront size={18} />
-          <h2 className="text-sm font-semibold uppercase tracking-wide">Details</h2>
-        </div>
-        <div className="grid gap-4 p-4 sm:grid-cols-2">
-          <div className="space-y-1 sm:col-span-2">
-            <Label>Restaurant name</Label>
-            <Input value={form.name} onChange={(e) => set("name", e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label>Primary phone</Label>
-            <Input
-              type="tel"
-              inputMode="tel"
-              placeholder="+91 98765 43210"
-              value={form.phone}
-              onChange={(e) => set("phone", e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>GST number</Label>
-            <Input
-              placeholder="22AAAAA0000A1Z5"
-              className="uppercase"
-              value={form.gst_number}
-              onChange={(e) => set("gst_number", e.target.value.toUpperCase())}
-            />
-          </div>
-          <div className="space-y-1 sm:col-span-2">
-            <Label>Address</Label>
-            <Input
-              placeholder="Street, area, city, PIN"
-              value={form.address}
-              onChange={(e) => set("address", e.target.value)}
-            />
-          </div>
-        </div>
-        <div className="flex justify-end border-t border-border px-4 py-3">
-          <Button onClick={save} disabled={busy}>
-            {busy ? "Saving…" : "Save details"}
-          </Button>
-        </div>
-      </section>
 
       <ReceiptPrinterCard />
 
       <p className="text-xs text-muted-foreground">
-        Tax rates and packing/delivery charges are managed on the Menu page under “Charges &amp; taxes”.
+        Restaurant name, address, and GST live on the{" "}
+        <Link to="/profile" className="underline">
+          Profile
+        </Link>{" "}
+        page. Tax rates and packing/delivery charges are on the Menu page under “Charges &amp; taxes”.
       </p>
     </div>
   );

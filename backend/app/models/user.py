@@ -4,6 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
+from app.models.cafe import normalize_gst
 from app.models.common import DBModel, Role, new_id, utcnow
 
 # Accept 10–15 digits, optional leading "+", ignoring spaces/dashes/parens.
@@ -41,11 +42,17 @@ class UserCreate(BaseModel):
 
 
 class RegisterStart(BaseModel):
-    """Step 1 of manager signup: validate + trigger the email OTP."""
+    """Step 1 of manager signup: validate + trigger the email OTP.
+
+    GST is mandatory for real accounts; a signup carrying a valid ``test_code``
+    (checked against TEST_SIGNUP_CODE in the router) may omit it.
+    """
     name: str = Field(min_length=1)
     phone: str
     email: EmailStr
     cafe_name: str = Field(min_length=1)
+    gst_number: Optional[str] = None
+    test_code: Optional[str] = None
     password: str = Field(min_length=6)
     confirm_password: str
 
@@ -53,6 +60,13 @@ class RegisterStart(BaseModel):
     @classmethod
     def _phone(cls, v: str) -> str:
         return _normalize_phone(v)
+
+    @field_validator("gst_number")
+    @classmethod
+    def _gst(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None
+        return normalize_gst(v)
 
     @model_validator(mode="after")
     def _passwords_match(self):
@@ -73,6 +87,32 @@ class ResetRequest(BaseModel):
 
 class ResetConfirm(BaseModel):
     token: str
+    password: str = Field(min_length=6)
+    confirm_password: str
+
+    @model_validator(mode="after")
+    def _passwords_match(self):
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match.")
+        return self
+
+
+class ProfileUpdate(BaseModel):
+    """Owner edits their own account details. Email is identity — not editable here."""
+    name: Optional[str] = Field(default=None, min_length=1)
+    phone: Optional[str] = None
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None
+        return _normalize_phone(v)
+
+
+class PasswordChange(BaseModel):
+    """Signed-in password change (distinct from the emailed reset flow)."""
+    current_password: str
     password: str = Field(min_length=6)
     confirm_password: str
 

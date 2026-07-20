@@ -18,6 +18,7 @@ export const keys = {
   waiters: ["waiters"] as const,
   waiterDevices: ["waiterDevices"] as const,
   cafe: ["cafe"] as const,
+  profile: ["profile"] as const,
   device: ["device", "me"] as const,
   reconciliation: ["reconciliation"] as const,
 };
@@ -27,6 +28,10 @@ export const useReconciliation = () =>
   useQuery({ queryKey: keys.reconciliation, queryFn: api.getReconciliation, refetchInterval: 15000 });
 
 export const useCafe = () => useQuery({ queryKey: keys.cafe, queryFn: api.getCafe, staleTime: 300000 });
+
+// Owner's account + business identity; `gst_required` drives the compliance banner.
+export const useProfile = () =>
+  useQuery({ queryKey: keys.profile, queryFn: api.getProfile, staleTime: 60000 });
 
 // Waiter app: current device name + assigned waiter, polled so manager reassignment shows up live.
 export const useDevice = () =>

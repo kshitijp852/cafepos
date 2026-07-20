@@ -87,3 +87,5 @@ agenthub/agents/youtube/db
 
 # Mobile development
 android-sdk/ 
+# Local Claude Code workspace (worktrees, session state)
+.claude/

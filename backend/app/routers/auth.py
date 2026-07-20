@@ -1,3 +1,4 @@
+import secrets
 from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException
@@ -45,10 +46,26 @@ def _issue(user: User) -> AuthResponse:
     )
 
 
+def _resolve_test_code(code: str | None) -> bool:
+    """True when `code` matches TEST_SIGNUP_CODE, marking this a test account.
+
+    A blank/unset TEST_SIGNUP_CODE disables the bypass, so a misconfigured
+    production instance can never waive the GST requirement.
+    """
+    if not code:
+        return False
+    if not settings.test_signup_code:
+        raise HTTPException(status_code=400, detail="Invalid test access code.")
+    if not secrets.compare_digest(code, settings.test_signup_code):
+        raise HTTPException(status_code=400, detail="Invalid test access code.")
+    return True
+
+
 async def _create_owner_and_cafe(*, email: str, name: str, cafe_name: str, password: str,
                                  phone: str | None = None) -> User:
     """Create the cafe + owner user pair used by both signup paths."""
-    cafe = Cafe(name=cafe_name)
+    # Legacy/automation path — no GST collected, so the cafe is a test account.
+    cafe = Cafe(name=cafe_name, is_test_account=True)
     await db.cafes.insert_one(to_mongo(cafe))
 
     user = User(email=email, name=name, phone=phone, cafe_id=cafe.id, role=Role.owner.value)
@@ -79,12 +96,18 @@ async def register_start(payload: RegisterStart):
     if await db.users.find_one({"email": payload.email}):
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    is_test_account = _resolve_test_code(payload.test_code)
+    if not is_test_account and not payload.gst_number:
+        raise HTTPException(status_code=400, detail="GST number is required to create an account.")
+
     otp = generate_otp()
     pending = {
         "email": payload.email,
         "name": payload.name,
         "phone": payload.phone,
         "cafe_name": payload.cafe_name,
+        "gst_number": payload.gst_number,
+        "is_test_account": is_test_account,
         "password_hash": get_password_hash(payload.password),
         "otp_hash": get_password_hash(otp),
         "attempts": 0,
@@ -124,7 +147,11 @@ async def register_verify(payload: RegisterVerify):
         await db.pending_registrations.delete_one({"email": payload.email})
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    cafe = Cafe(name=pending["cafe_name"])
+    cafe = Cafe(
+        name=pending["cafe_name"],
+        gst_number=pending.get("gst_number"),
+        is_test_account=pending.get("is_test_account", False),
+    )
     await db.cafes.insert_one(to_mongo(cafe))
     user = User(
         email=pending["email"], name=pending["name"], phone=pending.get("phone"),

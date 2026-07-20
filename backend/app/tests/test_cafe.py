@@ -15,7 +15,7 @@ async def test_update_restaurant_details(api, owner):
     assert c["name"] == "My Diner"
     assert c["phone"] == "98765 43210"
     assert c["address"] == "12 MG Road"
-    assert c["gst_number"] == "22aaaaa0000a1z5"
+    assert c["gst_number"] == "22AAAAA0000A1Z5"  # normalized to upper case
 
 
 async def test_blank_detail_clears_field(api, owner):

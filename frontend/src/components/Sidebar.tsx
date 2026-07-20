@@ -9,6 +9,7 @@ import {
   Package,
   ShoppingBag,
   SquaresFour,
+  UserCircle,
   Users,
   WarningCircle,
   type Icon,
@@ -42,6 +43,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/tables", label: "Tables", icon: GridFour },
       { to: "/staff", label: "Staff", icon: Users },
+      { to: "/profile", label: "Profile", icon: UserCircle },
       { to: "/settings", label: "Settings", icon: GearSix },
     ],
   },
@@ -54,19 +56,27 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+export function SidebarNav({
+  onNavigate,
+  collapsed = false,
+}: {
+  onNavigate?: () => void;
+  collapsed?: boolean;
+}) {
   // Live count of unresolved offline-replay conflicts, shown as a badge on the
   // Reconcile link so managers notice when a sync left something to review.
   const { data: reconciliation } = useReconciliation();
   const conflictCount = reconciliation?.count ?? 0;
 
   return (
-    <nav className="flex-1 overflow-y-auto py-4">
+    <nav className="flex-1 overflow-y-auto overflow-x-hidden py-4">
       {NAV_GROUPS.map((group) => (
         <div key={group.heading} className="mb-5">
-          <div className="px-5 pb-2 text-[0.65rem] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-            {group.heading}
-          </div>
+          {!collapsed && (
+            <div className="px-5 pb-2 text-[0.65rem] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+              {group.heading}
+            </div>
+          )}
           <ul>
             {group.items.map(({ to, label, icon: Icon, end }) => {
               const badge = to === "/reconcile" ? conflictCount : 0;
@@ -76,21 +86,26 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                     to={to}
                     end={end}
                     onClick={onNavigate}
+                    title={collapsed ? label : undefined}
                     className={({ isActive }) =>
                       cn(
-                        "flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-colors",
+                        "relative flex items-center gap-3 py-2.5 text-sm font-medium transition-colors",
+                        collapsed ? "justify-center px-0 mx-2" : "px-5",
                         isActive
                           ? "bg-primary text-primary-foreground"
                           : "text-foreground/70 hover:bg-accent hover:text-foreground",
                       )
                     }
                   >
-                    <Icon size={19} />
-                    <span>{label}</span>
-                    {badge > 0 && (
+                    <Icon size={19} className="shrink-0" />
+                    {!collapsed && <span>{label}</span>}
+                    {badge > 0 && !collapsed && (
                       <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-xs font-semibold text-destructive-foreground">
                         {badge}
                       </span>
+                    )}
+                    {badge > 0 && collapsed && (
+                      <span className="absolute right-1 top-1.5 h-2 w-2 rounded-full bg-destructive" />
                     )}
                   </NavLink>
                 </li>
@@ -103,7 +118,10 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function Wordmark() {
+export function Wordmark({ collapsed = false }: { collapsed?: boolean }) {
+  if (collapsed) {
+    return <span className="font-serif text-xl font-bold tracking-tight">C</span>;
+  }
   return (
     <div className="flex items-baseline gap-1.5 font-serif">
       <span className="text-xl font-bold tracking-tight">Café</span>

@@ -1,9 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
-import { CaretDown, DeviceMobile, List, SignOut } from "@phosphor-icons/react";
+import { Link, Outlet, useNavigate } from "react-router-dom";
+import {
+  CaretDown,
+  CaretLineLeft,
+  CaretLineRight,
+  DeviceMobile,
+  List,
+  SignOut,
+  UserCircle,
+  WarningCircle,
+} from "@phosphor-icons/react";
 
 import { useAuth } from "@/auth/AuthContext";
-import { useCafe } from "@/api/queries";
+import { cn } from "@/lib/utils";
+import { useCafe, useProfile } from "@/api/queries";
 import type { User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -19,10 +29,12 @@ function initials(name?: string) {
 
 function AccountMenu({
   user,
+  onProfile,
   onWaiterMode,
   onLogout,
 }: {
   user: User | null;
+  onProfile: () => void;
   onWaiterMode: () => void;
   onLogout: () => void;
 }) {
@@ -74,6 +86,17 @@ function AccountMenu({
             role="menuitem"
             onClick={() => {
               setOpen(false);
+              onProfile();
+            }}
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-accent"
+          >
+            <UserCircle size={18} />
+            Profile
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
               onWaiterMode();
             }}
             className="flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-accent"
@@ -99,11 +122,22 @@ function AccountMenu({
   );
 }
 
+const SIDEBAR_COLLAPSED_KEY = "cafepos.sidebarCollapsed";
+
 export function AppLayout() {
   const { user, logout } = useAuth();
   const { data: cafe } = useCafe();
+  // Accounts created before GST became mandatory still need to supply one.
+  const { data: profile } = useProfile();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1",
+  );
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
 
   const handleLogout = () => {
     logout();
@@ -113,11 +147,25 @@ export function AppLayout() {
   return (
     <div className="flex h-screen bg-background text-foreground">
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-border">
-        <div className="flex h-16 items-center border-b border-border px-5">
-          <Wordmark />
+      <aside
+        className={cn(
+          "relative hidden lg:flex shrink-0 flex-col border-r border-border transition-[width] duration-200",
+          collapsed ? "w-16" : "w-60",
+        )}
+      >
+        <div className="flex h-16 items-center justify-between border-b border-border px-5">
+          <Wordmark collapsed={collapsed} />
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(collapsed && "absolute right-[-14px] h-7 w-7 border border-border bg-background shadow")}
+            onClick={() => setCollapsed((v) => !v)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <CaretLineRight size={16} /> : <CaretLineLeft size={16} />}
+          </Button>
         </div>
-        <SidebarNav />
+        <SidebarNav collapsed={collapsed} />
       </aside>
 
       {/* Mobile drawer */}
@@ -157,9 +205,26 @@ export function AppLayout() {
           <div className="flex items-center gap-1">
             <OfflineStatus />
             <AlertsBell />
-            <AccountMenu user={user} onWaiterMode={() => navigate("/waiter")} onLogout={handleLogout} />
+            <AccountMenu
+              user={user}
+              onProfile={() => navigate("/profile")}
+              onWaiterMode={() => navigate("/waiter")}
+              onLogout={handleLogout}
+            />
           </div>
         </header>
+
+        {profile?.gst_required && (
+          <Link
+            to="/profile"
+            className="flex items-center gap-2 border-b border-danger bg-danger/10 px-4 py-2 text-sm hover:bg-danger/20 lg:px-6"
+          >
+            <WarningCircle size={16} className="shrink-0 text-danger" />
+            <span>
+              <b>GST number missing.</b> Bills are not tax-compliant until you add it — open Profile.
+            </span>
+          </Link>
+        )}
 
         <main className="flex-1 overflow-auto">
           <Outlet />

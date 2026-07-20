@@ -50,7 +50,8 @@ async def test_otp_signup_flow(api):
     email = f"m_{uuid.uuid4().hex[:8]}@example.com"
     body = {
         "name": "Manager", "phone": "+919876543210", "email": email,
-        "cafe_name": "Cafe OTP", "password": "password123", "confirm_password": "password123",
+        "cafe_name": "Cafe OTP", "gst_number": "22AAAAA0000A1Z5",
+        "password": "password123", "confirm_password": "password123",
     }
     start = await api.post("/api/auth/register/start", json=body)
     assert start.status_code == 200, start.text

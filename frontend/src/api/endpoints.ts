@@ -28,6 +28,9 @@ export type RegisterStartInput = {
   phone: string;
   email: string;
   cafe_name: string;
+  // GST is mandatory unless a valid test_code is supplied (demo/QA accounts).
+  gst_number?: string;
+  test_code?: string;
   password: string;
   confirm_password: string;
 };
@@ -290,12 +293,37 @@ export const updateCafe = (d: {
   name?: string;
   phone?: string;
   address?: string;
+  pincode?: string;
+  city?: string;
+  state?: string;
   gst_number?: string;
   cgst_percentage?: number;
   sgst_percentage?: number;
   packing_charge?: number;
   delivery_charge?: number;
 }) => api.patch<Cafe>("/cafe", d).then((r) => r.data);
+
+// ---- Pincode lookup (proxied server-side; the API key never reaches the browser) ----
+export type PincodeLookup = {
+  pincode: string;
+  city: string;
+  district: string;
+  state: string;
+  areas: string[];
+};
+export const lookupPincode = (pincode: string) =>
+  api.get<PincodeLookup>(`/pincode/${pincode}`).then((r) => r.data);
+
+// ---- Profile (owner's own account + business identity) ----
+export type Profile = { user: User; cafe: Cafe; gst_required: boolean };
+export const getProfile = () => api.get<Profile>("/profile").then((r) => r.data);
+export const updateProfile = (d: { name?: string; phone?: string }) =>
+  api.patch<User>("/profile", d).then((r) => r.data);
+export const changePassword = (d: {
+  current_password: string;
+  password: string;
+  confirm_password: string;
+}) => api.post<{ message: string }>("/profile/password", d).then((r) => r.data);
 
 // ---- Staff roster (names only — staff never log in; devices do) ----
 export const getWaiters = () => api.get<User[]>("/waiters").then((r) => r.data);

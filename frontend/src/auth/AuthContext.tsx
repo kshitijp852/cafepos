@@ -1,12 +1,14 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
 import type { AuthResponse, User } from "@/lib/types";
-import { clearAuth, getToken, getUser, saveSession } from "./storage";
+import { clearAuth, getToken, getUser, saveSession, setStoredUser } from "./storage";
 
 interface AuthContextValue {
   user: User | null;
   isAuthenticated: boolean;
   login: (auth: AuthResponse) => void;
+  /** Replace the cached user after a profile edit (keeps the header in sync). */
+  updateUser: (user: User) => void;
   logout: () => void;
 }
 
@@ -26,6 +28,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login: (auth) => {
         saveSession(auth.user, auth.token, auth.refresh_token);
         setUser(auth.user);
+      },
+      updateUser: (next) => {
+        setStoredUser(next);
+        setUser(next);
       },
       logout: () => {
         clearAuth();

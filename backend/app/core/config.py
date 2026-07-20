@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     # Waiter device-pairing code lifetime (pending activation).
     device_code_expiry_minutes: int = 15
 
+    # RapidAPI credentials for Indian pincode -> city/state lookup. Proxied by
+    # the backend so the key never reaches the browser bundle. Empty disables
+    # the lookup (the field stays manually editable).
+    rapidapi_key: str = ""
+    pincode_api_host: str = "pincode.p.rapidapi.com"
+
+    # Shared secret that lets a signup skip the mandatory GST number (demo /
+    # QA accounts). Empty (the default) disables the bypass entirely, so a
+    # production instance cannot be talked out of collecting GST.
+    test_signup_code: str = ""
+
     # Default country code (no '+') for normalizing local customer phone numbers
     # to E.164 at settlement. 91 = India.
     default_country_code: str = "91"

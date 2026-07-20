@@ -39,6 +39,11 @@ export const saveSession = (
   localStorage.setItem(key("refresh_token", scope), refreshToken);
 };
 
+/** Refresh only the cached user record (e.g. after a profile edit). */
+export const setStoredUser = (user: User, scope: Scope = currentScope()) => {
+  localStorage.setItem(key("user", scope), JSON.stringify(user));
+};
+
 export const setTokens = (
   token: string,
   refreshToken: string,

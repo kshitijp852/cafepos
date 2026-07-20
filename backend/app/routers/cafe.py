@@ -33,9 +33,14 @@ async def update_cafe(payload: CafeSettingsUpdate, current_user: dict = Depends(
     if "name" in updates:
         updates["name"] = updates["name"].strip()
     # Optional text details: trim; empty -> cleared (null).
-    for field in ("phone", "address", "gst_number"):
+    for field in ("phone", "address", "city", "state"):
         if field in updates:
             updates[field] = (updates[field] or "").strip() or None
+
+    # GST is already normalized/validated by the model. Only test accounts may
+    # sit without one, so a real cafe cannot clear it.
+    if "gst_number" in updates and updates["gst_number"] is None and not cafe.get("is_test_account"):
+        raise HTTPException(status_code=400, detail="GST number is required and cannot be removed.")
 
     # Recompute the combined tax rate whenever either component changes.
     if "cgst_percentage" in updates or "sgst_percentage" in updates:

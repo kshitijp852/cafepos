@@ -18,6 +18,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?\d{10,15}$/;
+// Indian GSTIN: state code, PAN, entity digit, 'Z', checksum char.
+const GST_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/;
 
 // Keep only digits, preserving a single leading "+" (country code).
 const sanitizePhone = (v: string): string =>
@@ -39,10 +41,14 @@ export function LoginPage() {
     name: "",
     phone: "",
     cafe_name: "",
+    gst_number: "",
+    test_code: "",
     email: "",
     password: "",
     confirm_password: "",
   });
+  // Test/demo signups swap the mandatory GST field for a test access code.
+  const [testMode, setTestMode] = useState(false);
   const [otp, setOtp] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
 
@@ -88,6 +94,12 @@ export function LoginPage() {
     if (!PHONE_RE.test(regForm.phone.replace(/[\s\-()]/g, ""))) return "Enter a valid phone number.";
     if (!EMAIL_RE.test(regForm.email)) return "Enter a valid email.";
     if (!regForm.cafe_name.trim()) return "Enter your cafe name.";
+    if (testMode) {
+      if (!regForm.test_code.trim()) return "Enter the test access code.";
+    } else {
+      if (!regForm.gst_number.trim()) return "GST number is required.";
+      if (!GST_RE.test(regForm.gst_number.trim())) return "Enter a valid 15-character GST number.";
+    }
     if (regForm.password.length < 6) return "Password must be at least 6 characters.";
     if (regForm.password !== regForm.confirm_password) return "Passwords do not match.";
     return null;
@@ -98,7 +110,12 @@ export function LoginPage() {
     if (problem) return toast.error(problem);
     setBusy(true);
     try {
-      const res = await registerStart(regForm);
+      // Send exactly one of GST / test code, so a stale field can't leak through.
+      const res = await registerStart({
+        ...regForm,
+        gst_number: testMode ? undefined : regForm.gst_number.trim(),
+        test_code: testMode ? regForm.test_code.trim() : undefined,
+      });
       toast.success(res.message);
       if (res.dev_otp) {
         setOtp(res.dev_otp); // DEV mode: prefill the code.
@@ -230,6 +247,41 @@ export function LoginPage() {
                     <Label htmlFor="r-cafe">Cafe Name</Label>
                     <Input id="r-cafe" value={regForm.cafe_name} onChange={(e) => setReg("cafe_name", e.target.value)} />
                   </div>
+                  {!testMode ? (
+                    <div className="space-y-1">
+                      <Label htmlFor="r-gst">GST Number</Label>
+                      <Input
+                        id="r-gst"
+                        placeholder="22AAAAA0000A1Z5"
+                        maxLength={15}
+                        className="uppercase"
+                        value={regForm.gst_number}
+                        onChange={(e) => setReg("gst_number", e.target.value.toUpperCase().trim())}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Required — it appears on every bill you issue.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <Label htmlFor="r-testcode">Test Access Code</Label>
+                      <Input
+                        id="r-testcode"
+                        value={regForm.test_code}
+                        onChange={(e) => setReg("test_code", e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Test accounts skip GST. Bills from them are not tax-compliant.
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:underline"
+                    onClick={() => setTestMode((v) => !v)}
+                  >
+                    {testMode ? "I have a GST number" : "Setting up a test account?"}
+                  </button>
                   <div className="space-y-1">
                     <Label htmlFor="r-email">Email</Label>
                     <Input

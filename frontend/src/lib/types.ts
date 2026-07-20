@@ -59,8 +59,13 @@ export interface Cafe {
   id: string;
   name: string;
   address?: string | null;
+  pincode?: string | null;
+  city?: string | null;
+  state?: string | null;
   phone?: string | null;
   gst_number?: string | null;
+  // Test/demo accounts (created with a signup test code) may run without GST.
+  is_test_account?: boolean;
   tax_percentage: number;
   cgst_percentage: number;
   sgst_percentage: number;
