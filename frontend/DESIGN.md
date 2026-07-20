@@ -21,12 +21,25 @@ Accents are **functional only** (status). Brand stays black-and-white. Don't use
 
 ## Typography
 
-- **Serif — Playfair Display**: page titles, section headings (`h1–h3` default to serif), KPI
-  numerals, hero numbers. `font-serif`.
+- **Display — Archivo Expanded**: page titles, section headings (`h1–h3` default to it), KPI
+  numerals, table numbers. `font-heading`.
 - **Sans — Montserrat**: body, UI, labels, buttons. Default (`font-sans`).
 - **Numbers**: Montserrat + `.nums` (tabular figures) for prices/quantities so columns align.
-- Hierarchy via scale + weight (≥1.25 step). Weights loaded: Montserrat 400/500/600/700,
-  Playfair 500/600/700.
+- Hierarchy via scale + weight (≥1.25 step). Montserrat 400/500/600/700; Archivo ships as a
+  variable font (weight 100–900).
+
+**On Archivo Expanded.** There is no separate "Archivo Expanded" family — Expanded is the top
+of Archivo's width axis. The `heading` stack in `tailwind.config.cjs` loads
+`@fontsource-variable/archivo` (`wdth.css`) and pins `font-variation-settings: "wdth" 125`.
+One variable file covers every weight and width, so this is *smaller* than the static cuts it
+replaced. Consequences to respect:
+
+- The face is already wide. Don't stack `tracking-wide` on large `font-heading` text — reserve
+  letter-spacing for small uppercase labels, which are set in `font-sans`.
+- Width eats horizontal space in dense grids (the waiter tables grid is `aspect-square` at up to
+  6 columns). Check long table names when changing that layout.
+- `font-serif` is aliased to the same stack so a stray usage can't fall back to a system serif.
+  New code should say `font-heading`.
 
 ## Shape & elevation
 

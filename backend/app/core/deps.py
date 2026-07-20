@@ -41,6 +41,26 @@ async def get_current_user(authorization: str = Header(None)) -> dict:
     return payload
 
 
+async def require_user_session(current_user: dict = Depends(get_current_user)) -> dict:
+    """Reject waiter-device sessions; allow real signed-in users.
+
+    A device token is issued to a tablet on the floor, not to a person: it is
+    long-lived, its holder is whoever is carrying the device, and a manager
+    reassigns who it belongs to without the device re-authenticating. That is the
+    right trade for taking orders and wrong for anything else, so money,
+    reporting, and destructive actions require a user session.
+
+    Role checks (``require_role``) are a separate axis and still apply — this
+    only answers "is a person behind this request".
+    """
+    if current_user.get("device_id"):
+        raise HTTPException(
+            status_code=403,
+            detail="This action isn't available on a waiter device.",
+        )
+    return current_user
+
+
 def require_role(allowed_roles: Sequence[str]):
     """Dependency factory enforcing that the caller's role is allowed."""
     allowed = list(allowed_roles)

@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import {
+  AddressBook,
   CalendarBlank,
   ChartLineUp,
   ClockCounterClockwise,
@@ -51,6 +52,7 @@ export const NAV_GROUPS: NavGroup[] = [
     heading: "Insights",
     items: [
       { to: "/analytics", label: "Analytics", icon: ChartLineUp },
+      { to: "/customers", label: "Customers", icon: AddressBook },
       { to: "/history", label: "History", icon: ClockCounterClockwise },
     ],
   },
@@ -120,10 +122,10 @@ export function SidebarNav({
 
 export function Wordmark({ collapsed = false }: { collapsed?: boolean }) {
   if (collapsed) {
-    return <span className="font-serif text-xl font-bold tracking-tight">C</span>;
+    return <span className="font-heading text-xl font-bold tracking-tight">C</span>;
   }
   return (
-    <div className="flex items-baseline gap-1.5 font-serif">
+    <div className="flex items-baseline gap-1.5 font-heading">
       <span className="text-xl font-bold tracking-tight">Café</span>
       <span className="text-xl font-semibold text-muted-foreground">POS</span>
     </div>

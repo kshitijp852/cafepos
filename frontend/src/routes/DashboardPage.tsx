@@ -108,7 +108,7 @@ function TableTile({ table, order, onOpen }: { table: Table; order?: Order; onOp
             : "border-success/60 bg-success/20 hover:bg-success/30",
       )}
     >
-      <div className="font-serif text-2xl font-bold">{table.name}</div>
+      <div className="font-heading text-2xl font-bold">{table.name}</div>
       {occupied ? (
         <>
           <div className="text-sm font-semibold nums">{inr(order!.total)}</div>
@@ -130,7 +130,7 @@ function Kpi({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-r border-border px-5 py-4 last:border-r-0">
       <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="mt-1 font-serif text-2xl font-bold nums">{value}</div>
+      <div className="mt-1 font-heading text-2xl font-bold nums">{value}</div>
     </div>
   );
 }
@@ -155,7 +155,7 @@ function SetupGuide({
 
   return (
     <div className="mx-auto max-w-3xl border border-border p-6">
-      <h2 className="font-serif text-xl font-bold">Finish setting up your cafe</h2>
+      <h2 className="font-heading text-xl font-bold">Finish setting up your cafe</h2>
       <p className="mb-5 mt-1 text-sm text-muted-foreground">
         {remaining === 0 ? "All set — you're ready to go." : `${remaining} step${remaining > 1 ? "s" : ""} left before you can take orders.`}
       </p>

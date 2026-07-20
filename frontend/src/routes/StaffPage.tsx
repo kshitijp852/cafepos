@@ -155,7 +155,7 @@ export function StaffPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6">
       <div>
-        <h1 className="font-serif text-2xl font-bold">Staff &amp; Devices</h1>
+        <h1 className="font-heading text-2xl font-bold">Staff &amp; Devices</h1>
         <p className="text-sm text-muted-foreground">
           Pair ordering devices, then choose who is serving on each. Staff names are optional — a device
           can just take orders.
@@ -346,7 +346,7 @@ export function StaffPage() {
       <Dialog open={activateOpen} onOpenChange={(o) => !o && !activating && setActivateOpen(false)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-serif">Activate a device</DialogTitle>
+            <DialogTitle className="font-heading">Activate a device</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             On the device, open the waiter app and tap &quot;Get a device code&quot;. Enter that code here.
@@ -404,7 +404,7 @@ export function StaffPage() {
       <Dialog open={!!renameTarget} onOpenChange={(o) => !o && setRenameTarget(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-serif">Rename device</DialogTitle>
+            <DialogTitle className="font-heading">Rename device</DialogTitle>
           </DialogHeader>
           <div className="space-y-1">
             <Label htmlFor="rename">Device name</Label>
@@ -428,7 +428,7 @@ export function StaffPage() {
       <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-serif">Delete {deleteTarget?.name}?</DialogTitle>
+            <DialogTitle className="font-heading">Delete {deleteTarget?.name}?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             Removes <span className="font-mono">@{deleteTarget?.username}</span> from the roster. Any device they

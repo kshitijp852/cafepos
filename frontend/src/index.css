@@ -2,6 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Metric-adjusted stand-in for Archivo, used while the webfont loads (and if it
+   fails entirely). Arial is scaled so headings occupy roughly the same vertical
+   box, which keeps the swap from shifting line boxes. Values are approximate.
+
+   Headings render at Archivo Expanded (wdth 125) but Arial has no width axis, so
+   the fallback is narrower than the real face for the moment before it swaps.
+   Vertical metrics are what matter here — a width mismatch reflows a heading,
+   an ascent mismatch shoves the whole page. */
+@font-face {
+    font-family: "Archivo Fallback";
+    src: local("Arial"), local("Helvetica Neue"), local("Liberation Sans");
+    size-adjust: 97%;
+    ascent-override: 94%;
+    descent-override: 24%;
+    line-gap-override: 0%;
+}
+
 @layer base {
     :root {
         /* Tinted monochrome base — warm off-white paper + soft charcoal ink.
@@ -41,7 +58,7 @@
         --chart-2: 38 92% 48%;
         --chart-3: 4 72% 48%;
         --chart-4: 60 4% 42%;
-        --chart-5: 60 6% 11%;
+        --chart-5: 214 80% 47%;
 
         --radius: 0rem;
     }
@@ -73,6 +90,15 @@
         --border: 60 4% 20%;
         --input: 60 4% 22%;
         --ring: 48 20% 80%;
+
+        /* Lifted for contrast against the dark card; chart-5 especially, since
+           its light-mode value is near-black. */
+        --chart-1: 146 45% 45%;
+        --chart-2: 38 90% 58%;
+        --chart-3: 4 70% 58%;
+        --chart-4: 48 8% 62%;
+        --chart-5: 210 85% 62%;
+
         --radius: 0rem;
     }
 }
@@ -85,9 +111,9 @@
         @apply bg-background text-foreground font-sans antialiased;
         font-feature-settings: "cv02", "cv03", "cv04";
     }
-    /* Display headings default to the serif; opt out with font-sans. */
+    /* Headings default to Archivo Expanded; opt out with font-sans. */
     h1, h2, h3 {
-        @apply font-serif;
+        @apply font-heading;
     }
     /* Tabular figures for money/quantities keep columns aligned. */
     .nums {

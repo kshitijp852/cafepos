@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-import type { Bill, Cafe } from "@/lib/types";
-import { buildReceipt } from "@/lib/escpos";
+import type { Bill, Cafe, Order } from "@/lib/types";
+import { buildKOT, buildReceipt } from "@/lib/escpos";
 
 // Direct-to-printer receipt printing over Web Bluetooth or WebUSB. This runs
 // entirely on the device, so receipts print during an internet outage — the
@@ -198,6 +198,16 @@ export async function printReceipt(bill: Bill, cafe?: Cafe | null): Promise<void
   if (!active) await reconnectUsb();
   if (!active) throw new Error("No printer connected. Pair one in Settings.");
   await active.write(buildReceipt(bill, cafe));
+}
+
+/** Print a kitchen order ticket. Same transport as receipts, no prices. */
+export async function printKitchenTicket(
+  order: Pick<Order, "items" | "created_at" | "waiter_name">,
+  opts: { tableName?: string | null; token?: string } = {},
+): Promise<void> {
+  if (!active) await reconnectUsb();
+  if (!active) throw new Error("No printer connected. Pair one in Settings.");
+  await active.write(buildKOT(order, opts));
 }
 
 /** Print a short confirmation slip to verify the connection. */

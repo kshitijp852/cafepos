@@ -21,12 +21,20 @@ function ensureDeviceId(): string {
   return id;
 }
 
+function formatCountdown(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 export function WaiterAuthPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const [deviceId] = useState(ensureDeviceId);
 
   const [code, setCode] = useState("");
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -59,12 +67,32 @@ export function WaiterAuthPage() {
     try {
       const res = await requestDeviceCode(deviceId);
       setCode(res.code);
+      setExpiresAt(new Date(res.expires_at).getTime());
     } catch (err) {
       setError(errorMessage(err, "Could not get a code"));
     } finally {
       setBusy(false);
     }
   }, [deviceId]);
+
+  // Codes expire server-side (DEVICE_CODE_EXPIRY_MINUTES). Count down so nobody
+  // reads a dead code aloud, and clear it at zero so the only thing on screen is
+  // the button that gets a fresh one.
+  useEffect(() => {
+    if (!expiresAt) return;
+    const tick = () => {
+      const left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+      setSecondsLeft(left);
+      if (left === 0) {
+        setCode("");
+        setExpiresAt(null);
+        setError("That code expired. Get a new one.");
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
 
   // Poll until a manager activates this device.
   useEffect(() => {
@@ -88,7 +116,7 @@ export function WaiterAuthPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <DeviceMobile size={36} className="mx-auto mb-2" />
-          <CardTitle className="font-serif text-2xl font-bold">Waiter Device</CardTitle>
+          <CardTitle className="font-heading text-2xl font-bold">Waiter Device</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground text-center">
@@ -109,12 +137,15 @@ export function WaiterAuthPage() {
                 <ArrowsClockwise className="w-4 h-4 animate-spin" />
                 <span>Waiting for your manager to activate…</span>
               </div>
-              <p className="text-xs text-muted-foreground text-center">
-                This unlocks automatically once activated.
+              <p className="text-center text-xs text-muted-foreground">
+                Unlocks automatically once activated · expires in {formatCountdown(secondsLeft)}
               </p>
+              <Button variant="ghost" className="w-full" onClick={getCode} disabled={busy}>
+                {busy ? "Getting a code…" : "Get a new code"}
+              </Button>
             </>
           ) : (
-            <Button className="w-full" onClick={getCode} disabled={busy}>
+            <Button className="h-12 w-full" onClick={getCode} disabled={busy}>
               {busy ? "Getting a code…" : "Get a device code"}
             </Button>
           )}

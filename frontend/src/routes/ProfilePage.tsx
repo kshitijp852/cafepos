@@ -57,7 +57,7 @@ export function ProfilePage() {
   return (
     <div className="mx-auto max-w-2xl space-y-8 p-6">
       <div>
-        <h1 className="font-serif text-2xl font-bold">Profile</h1>
+        <h1 className="font-heading text-2xl font-bold">Profile</h1>
         <p className="text-sm text-muted-foreground">
           Your account and the business identity printed on every bill.
         </p>

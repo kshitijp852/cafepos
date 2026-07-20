@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.deps import get_current_user
+from app.core.deps import require_user_session
 from app.db.mongo import db
 from app.db.serialization import to_mongo
 from app.models.common import SessionStatus
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 @router.get("/current", response_model=Optional[DaySession])
-async def get_current_session(current_user: dict = Depends(get_current_user)):
+async def get_current_session(current_user: dict = Depends(require_user_session)):
     today = date.today().isoformat()
     return await db.day_sessions.find_one(
         {"cafe_id": current_user["cafe_id"], "session_date": today, "status": SessionStatus.open.value},
@@ -22,7 +22,7 @@ async def get_current_session(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/open", response_model=DaySession)
-async def open_day_session(payload: DaySessionOpen, current_user: dict = Depends(get_current_user)):
+async def open_day_session(payload: DaySessionOpen, current_user: dict = Depends(require_user_session)):
     cafe_id = current_user["cafe_id"]
     today = date.today().isoformat()
     if await db.day_sessions.find_one(
@@ -41,7 +41,7 @@ async def open_day_session(payload: DaySessionOpen, current_user: dict = Depends
 
 
 @router.post("/close", response_model=DaySession)
-async def close_day_session(payload: DaySessionClose, current_user: dict = Depends(get_current_user)):
+async def close_day_session(payload: DaySessionClose, current_user: dict = Depends(require_user_session)):
     session = await db.day_sessions.find_one({"id": payload.session_id}, {"_id": 0})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -62,7 +62,7 @@ async def close_day_session(payload: DaySessionClose, current_user: dict = Depen
 
 
 @router.get("/history", response_model=List[DaySession])
-async def get_session_history(current_user: dict = Depends(get_current_user)):
+async def get_session_history(current_user: dict = Depends(require_user_session)):
     return await db.day_sessions.find(
         {"cafe_id": current_user["cafe_id"]}, {"_id": 0}
     ).sort("session_date", -1).to_list(30)

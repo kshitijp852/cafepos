@@ -148,7 +148,7 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-muted p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="font-serif text-3xl font-bold">Café POS</CardTitle>
+          <CardTitle className="font-heading text-3xl font-bold">Café POS</CardTitle>
           <p className="text-sm text-muted-foreground">Manager access</p>
         </CardHeader>
         <CardContent>

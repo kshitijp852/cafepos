@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 
-from app.core.deps import get_current_user, require_role
+from app.core.deps import get_current_user, require_role, require_user_session
 from app.db.mongo import db
 from app.db.serialization import to_mongo
 from app.models.common import Role
@@ -14,7 +14,7 @@ _MANAGER = require_role([Role.owner.value, Role.superadmin.value])
 
 
 @router.get("", response_model=List[InventoryItem])
-async def get_inventory(current_user: dict = Depends(get_current_user)):
+async def get_inventory(current_user: dict = Depends(require_user_session)):
     return await db.inventory.find({"cafe_id": current_user["cafe_id"]}, {"_id": 0}).to_list(1000)
 
 

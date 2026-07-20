@@ -7,8 +7,16 @@ from fastapi.encoders import jsonable_encoder
 from app.core.deps import get_current_user, require_role
 from app.db.mongo import db
 from app.db.serialization import to_mongo
-from app.models.common import Role
-from app.models.table import Floor, FloorCreate, Table, TableBulkCreate, TableCreate, TableUpdate
+from app.models.common import Role, TableStatus
+from app.models.table import (
+    Floor,
+    FloorCreate,
+    Table,
+    TableBulkCreate,
+    TableCreate,
+    TableTransfer,
+    TableUpdate,
+)
 
 router = APIRouter(tags=["tables"])
 _MANAGER = require_role([Role.owner.value, Role.superadmin.value])
@@ -100,6 +108,17 @@ async def update_table(table_id: str, payload: TableUpdate, current_user: dict =
     if existing["cafe_id"] != current_user["cafe_id"]:
         raise HTTPException(status_code=403, detail="You do not have access to this table.")
     updates = payload.model_dump(exclude_unset=True)
+
+    # A floor device may seat and free tables, nothing structural: renaming a
+    # table or moving it between floors is a layout decision, not a service one.
+    if current_user.get("device_id"):
+        structural = set(updates) - {"status", "current_order_id"}
+        if structural:
+            raise HTTPException(
+                status_code=403,
+                detail=f"A waiter device cannot change {', '.join(sorted(structural))}.",
+            )
+
     # Rename or floor move changes the floorname+name code — recompute and guard uniqueness.
     if "name" in updates or "floor_id" in updates:
         new_name = updates.get("name", existing["name"])
@@ -116,6 +135,62 @@ async def update_table(table_id: str, payload: TableUpdate, current_user: dict =
         # jsonable_encoder coerces enums to their string values for storage.
         await db.tables.update_one({"id": table_id}, {"$set": jsonable_encoder(updates)})
     return await db.tables.find_one({"id": table_id}, {"_id": 0})
+
+
+@router.post("/tables/{table_id}/transfer", response_model=Table)
+async def transfer_table(
+    table_id: str,
+    payload: TableTransfer,
+    current_user: dict = Depends(get_current_user),
+):
+    """Move a sitting to another table: the open order, the dwell clock, and the
+    occupied state all follow, and the old table is freed.
+
+    Guests move mid-service all the time; without this a waiter has to cancel and
+    re-key the order, which loses the kitchen ticket and the seating time.
+    """
+    cafe_id = current_user["cafe_id"]
+    source = await db.tables.find_one({"id": table_id, "cafe_id": cafe_id}, {"_id": 0})
+    if not source:
+        raise HTTPException(status_code=404, detail="Table not found.")
+    target = await db.tables.find_one(
+        {"id": payload.to_table_id, "cafe_id": cafe_id}, {"_id": 0}
+    )
+    if not target:
+        raise HTTPException(status_code=404, detail="Destination table not found.")
+    if source["id"] == target["id"]:
+        raise HTTPException(status_code=400, detail="That's the same table.")
+
+    order_id = source.get("current_order_id")
+    if not order_id:
+        raise HTTPException(status_code=400, detail="This table has no open order to move.")
+    if target.get("current_order_id"):
+        raise HTTPException(
+            status_code=409,
+            detail=f'{target["name"]} already has an open order. Settle it first.',
+        )
+
+    await db.orders.update_one(
+        {"id": order_id, "cafe_id": cafe_id}, {"$set": {"table_id": target["id"]}}
+    )
+    await db.tables.update_one(
+        {"id": target["id"]},
+        {"$set": {
+            "status": TableStatus.occupied.value,
+            "current_order_id": order_id,
+            # Carry the original seating time so the dwell timer isn't reset by a move.
+            "seated_at": jsonable_encoder(source.get("seated_at")),
+        }},
+    )
+    await db.tables.update_one(
+        {"id": source["id"]},
+        {"$set": {
+            "status": TableStatus.available.value,
+            "current_order_id": None,
+            "seated_at": None,
+        }},
+    )
+    return await db.tables.find_one({"id": target["id"]}, {"_id": 0})
 
 
 @router.delete("/tables/{table_id}")

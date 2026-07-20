@@ -56,13 +56,15 @@ export function CartPanel({
                   <X size={16} />
                 </button>
               </div>
+              {/* 44px targets — these get tapped one-handed, mid-service, on a
+                  phone. Anything smaller is a misfire waiting to happen. */}
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => onDec(item.menu_item_id)}>
-                  <Minus size={13} />
+                <Button variant="outline" size="icon" className="h-11 w-11" onClick={() => onDec(item.menu_item_id)}>
+                  <Minus size={16} />
                 </Button>
                 <span className="flex-1 text-center font-semibold nums">{item.quantity}</span>
-                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => onInc(item.menu_item_id)}>
-                  <Plus size={13} />
+                <Button variant="outline" size="icon" className="h-11 w-11" onClick={() => onInc(item.menu_item_id)}>
+                  <Plus size={16} />
                 </Button>
                 <div className="text-right font-semibold w-20 nums">{inr(item.price * item.quantity)}</div>
               </div>
@@ -92,7 +94,7 @@ export function CartPanel({
         <Separator />
         <div className="flex justify-between items-baseline">
           <span className="text-sm font-medium uppercase tracking-wide">Total</span>
-          <span className="font-serif text-2xl font-bold nums">{inr(total)}</span>
+          <span className="font-heading text-2xl font-bold nums">{inr(total)}</span>
         </div>
       </div>
 

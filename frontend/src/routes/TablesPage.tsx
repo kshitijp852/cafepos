@@ -148,7 +148,7 @@ export function TablesPage() {
     <div className="h-full overflow-auto p-6">
       <div className="max-w-5xl mx-auto space-y-6">
         <div>
-          <h1 className="font-serif text-2xl font-bold text-foreground">Floors &amp; Tables</h1>
+          <h1 className="font-heading text-2xl font-bold text-foreground">Floors &amp; Tables</h1>
           <p className="text-sm text-muted-foreground">
             Set up your seating layout. Add floors first, then add tables to each floor.
           </p>

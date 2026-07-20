@@ -73,7 +73,7 @@ async function enqueue(entry: QueuedMutation): Promise<void> {
 // True when an axios error means "the request never reached the server" — as
 // opposed to the server responding with a 4xx/5xx (which is a real, permanent
 // answer we must not blindly retry forever).
-function isNetworkError(err: unknown): boolean {
+export function isNetworkError(err: unknown): boolean {
   return err instanceof AxiosError && !err.response;
 }
 

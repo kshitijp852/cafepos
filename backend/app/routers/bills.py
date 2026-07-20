@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 
-from app.core.deps import get_current_user, require_role
+from app.core.deps import get_current_user, require_role, require_user_session
 from app.db.mongo import db
 from app.db.serialization import to_mongo
 from app.models.bill import Bill, BillCreate
@@ -24,7 +24,7 @@ settings = get_settings()
 
 
 @router.post("", response_model=Bill)
-async def create_bill(payload: BillCreate, current_user: dict = Depends(get_current_user)):
+async def create_bill(payload: BillCreate, current_user: dict = Depends(require_user_session)):
     cafe_id = current_user["cafe_id"]
 
     # Idempotent replay: a bill settled offline is queued with a client-generated
@@ -159,14 +159,14 @@ class SeriesReserveIn(BaseModel):
 
 
 @router.post("/series/claim")
-async def claim_bill_series(payload: SeriesClaimIn, current_user: dict = Depends(get_current_user)):
+async def claim_bill_series(payload: SeriesClaimIn, current_user: dict = Depends(require_user_session)):
     """Reserve a unique invoice-serial series for this device (one-time)."""
     code = await claim_series(db, current_user["cafe_id"], payload.preferred)
     return {"series_code": code}
 
 
 @router.post("/series/reserve")
-async def reserve_bill_serials(payload: SeriesReserveIn, current_user: dict = Depends(get_current_user)):
+async def reserve_bill_serials(payload: SeriesReserveIn, current_user: dict = Depends(require_user_session)):
     """Reserve a contiguous block of serials so the device can bill offline."""
     return await reserve_series_block(db, current_user["cafe_id"], payload.series_code, payload.count)
 
@@ -176,7 +176,7 @@ async def get_bills(
     limit: int = 100,
     skip: int = 0,
     date_filter: Optional[str] = None,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_user_session),
 ):
     query = {"cafe_id": current_user["cafe_id"], "soft_deleted": False}
     if date_filter:
@@ -236,7 +236,7 @@ async def void_bill(
 
 
 @router.get("/{bill_id}", response_model=Bill)
-async def get_bill(bill_id: str, current_user: dict = Depends(get_current_user)):
+async def get_bill(bill_id: str, current_user: dict = Depends(require_user_session)):
     bill = await db.bills.find_one({"id": bill_id, "soft_deleted": False}, {"_id": 0})
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")

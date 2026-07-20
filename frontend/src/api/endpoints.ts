@@ -108,6 +108,12 @@ export const createTablesBulk = (d: {
 export const updateTable = (id: string, d: Partial<Table>) =>
   api.put<Table>(`/tables/${id}`, d).then((r) => r.data);
 export const deleteTable = (id: string) => api.delete(`/tables/${id}`).then((r) => r.data);
+// Move a sitting to another table — the open order, the dwell clock and the
+// occupied state all follow, and the source table is freed. Returns the target.
+export const transferTable = (fromTableId: string, toTableId: string) =>
+  api
+    .post<Table>(`/tables/${fromTableId}/transfer`, { to_table_id: toTableId })
+    .then((r) => r.data);
 
 // ---- Orders ----
 export type OrderInput = {
@@ -256,15 +262,66 @@ export const getSessionHistory = () =>
 export const getDailyReport = (reportDate?: string) =>
   api.get<DailyReport>("/reports/daily", { params: { report_date: reportDate } }).then((r) => r.data);
 
+export type OrderTypeKey = "dine_in" | "takeaway" | "delivery";
 export type Analytics = {
   today: { revenue: number; bills: number; payment_breakdown: Record<string, number> };
   totals: { revenue: number; bills: number; avg_bill: number };
   payment_breakdown: Record<string, number>;
   top_items: [string, number][];
+  top_items_revenue: { name: string; qty: number; revenue: number }[];
   trend_7d: { date: string; revenue: number }[];
-  by_staff: { waiter_id: string; waiter_name: string; revenue: number; bills: number }[];
+  trend_daily: { date: string; revenue: number; bills: number; avg_bill: number }[];
+  by_hour: { hour: number; revenue: number; bills: number }[];
+  by_weekday: { weekday: number; label: string; revenue: number; bills: number }[];
+  order_types: Record<OrderTypeKey, { revenue: number; bills: number }>;
+  dwell: { buckets: { label: string; count: number }[]; avg_seconds: number; sampled_bills: number };
+  by_staff: { waiter_id: string; waiter_name: string; revenue: number; bills: number; avg_bill: number }[];
 };
-export const getAnalytics = () => api.get<Analytics>("/reports/analytics").then((r) => r.data);
+// Bills are stored in UTC — send the browser's offset so day/hour buckets match
+// the cafe's local trading day rather than UTC midnight.
+export const getAnalytics = () =>
+  api
+    .get<Analytics>("/reports/analytics", { params: { tz_offset: -new Date().getTimezoneOffset() } })
+    .then((r) => r.data);
+
+export type CustomerRow = {
+  phone: string;
+  name: string;
+  visits: number;
+  revenue: number;
+  items: number;
+  first_visit: string | null;
+  last_visit: string | null;
+  days_since: number | null;
+  avg_bill: number;
+};
+export type CustomerInsights = {
+  totals: {
+    bills: number;
+    identified_bills: number;
+    capture_rate: number;
+    identified_revenue: number;
+    unidentified_revenue: number;
+    customers: number;
+    repeat_customers: number;
+    repeat_rate: number;
+    repeat_revenue: number;
+    repeat_revenue_share: number;
+    avg_visits: number;
+    avg_spend: number;
+    active_customers: number;
+    lapsed_customers: number;
+    lapsed_after_days: number;
+  };
+  visit_buckets: { label: string; count: number }[];
+  new_vs_returning: { date: string; new: number; returning: number }[];
+  top_customers: CustomerRow[];
+  recent_lapsed: CustomerRow[];
+};
+export const getCustomerInsights = () =>
+  api
+    .get<CustomerInsights>("/reports/customers", { params: { tz_offset: -new Date().getTimezoneOffset() } })
+    .then((r) => r.data);
 
 // ---- Inventory ----
 export type InventoryInput = {

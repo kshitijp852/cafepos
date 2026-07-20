@@ -1,4 +1,4 @@
-import type { Bill, Cafe } from "@/lib/types";
+import type { Bill, Cafe, Order } from "@/lib/types";
 import { formatBillNo } from "@/lib/format";
 
 // Build an ESC/POS receipt as raw bytes, ready to stream to a thermal printer
@@ -70,6 +70,54 @@ function row(left: string, right: string): string {
 }
 
 const DIVIDER = "-".repeat(WIDTH);
+
+/**
+ * Build a kitchen order ticket. Deliberately price-free and large-type: the
+ * kitchen needs quantity, item, and special instructions, nothing else.
+ */
+export function buildKOT(
+  order: Pick<Order, "items" | "created_at" | "waiter_name">,
+  opts: { tableName?: string | null; token?: string } = {},
+): Uint8Array {
+  const e = new Encoder().init();
+
+  e.align("center").bold(true).size(true).line("KOT").size(false);
+  e.line(opts.tableName ? `TABLE ${opts.tableName}` : "TAKE AWAY").bold(false);
+
+  e.align("left").line(DIVIDER);
+  e.line(new Date(order.created_at).toLocaleTimeString());
+  if (order.waiter_name) e.line(`Waiter: ${order.waiter_name}`);
+  if (opts.token) e.line(`Ref: ${opts.token}`);
+  e.line(DIVIDER);
+
+  for (const it of order.items) {
+    e.bold(true).size(true).line(`${it.quantity} x ${it.menu_item_name}`).size(false).bold(false);
+    // Instructions are the whole reason a KOT exists — never truncate them.
+    if (it.notes?.trim()) {
+      for (const chunk of wrap(`* ${it.notes.trim()}`, WIDTH)) e.line(chunk);
+    }
+  }
+
+  e.line(DIVIDER);
+  e.feedAndCut();
+  return e.bytes();
+}
+
+/** Split text into lines of at most `width` characters, breaking on spaces. */
+function wrap(text: string, width: number): string[] {
+  const out: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/)) {
+    if (!line) line = word;
+    else if (line.length + 1 + word.length <= width) line += ` ${word}`;
+    else {
+      out.push(line);
+      line = word;
+    }
+  }
+  if (line) out.push(line);
+  return out;
+}
 
 export function buildReceipt(bill: Bill, cafe?: Cafe | null): Uint8Array {
   const e = new Encoder().init();

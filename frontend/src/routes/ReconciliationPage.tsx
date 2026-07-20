@@ -51,7 +51,7 @@ export function ReconciliationPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-8 p-4 lg:p-6">
       <header>
-        <h1 className="font-serif text-2xl font-bold">Reconcile</h1>
+        <h1 className="font-heading text-2xl font-bold">Reconcile</h1>
         <p className="text-sm text-muted-foreground">
           Conflicts left after offline devices synced. Review and resolve — nothing is deleted automatically.
         </p>

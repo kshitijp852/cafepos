@@ -184,7 +184,7 @@ export function MenuPage() {
     <div className="mx-auto max-w-5xl space-y-8 p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-serif text-2xl font-bold">Menu</h1>
+          <h1 className="font-heading text-2xl font-bold">Menu</h1>
           <p className="text-sm text-muted-foreground">
             {items.length} item{items.length === 1 ? "" : "s"} across {categories.length} categor
             {categories.length === 1 ? "y" : "ies"}.

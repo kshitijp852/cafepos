@@ -67,7 +67,7 @@ export function ReservationsPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6">
       <div>
-        <h1 className="font-serif text-2xl font-bold">Reservations</h1>
+        <h1 className="font-heading text-2xl font-bold">Reservations</h1>
         <p className="text-sm text-muted-foreground">Book tables ahead and track upcoming guests.</p>
       </div>
 

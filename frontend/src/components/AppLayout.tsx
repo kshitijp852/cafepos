@@ -192,7 +192,7 @@ export function AppLayout() {
               <List size={22} />
             </Button>
             {cafe?.name ? (
-              <h1 className="font-serif text-lg font-bold tracking-tight text-foreground truncate">
+              <h1 className="font-heading text-lg font-bold tracking-tight text-foreground truncate">
                 {cafe.name}
               </h1>
             ) : (

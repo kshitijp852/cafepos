@@ -140,7 +140,7 @@ export function OrderPage() {
         <AnimatedCheck size={64} />
         <div>
           <p className="text-sm uppercase tracking-wide text-muted-foreground">Pickup number</p>
-          <p className="font-serif text-6xl font-bold nums">#{formatBillNo(placed)}</p>
+          <p className="font-heading text-6xl font-bold nums">#{formatBillNo(placed)}</p>
         </div>
         <p className="max-w-xs text-sm text-muted-foreground">
           Call this number when the order is ready for collection.
@@ -164,11 +164,11 @@ export function OrderPage() {
         <div className="mx-1 h-8 w-px bg-border" />
         {isDineIn ? (
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center bg-primary font-serif text-lg font-bold text-primary-foreground">
+            <div className="flex h-11 w-11 items-center justify-center bg-primary font-heading text-lg font-bold text-primary-foreground">
               {table?.name ?? "—"}
             </div>
             <div>
-              <h1 className="font-serif text-xl font-bold leading-tight">{title}</h1>
+              <h1 className="font-heading text-xl font-bold leading-tight">{title}</h1>
               <p className="text-xs text-muted-foreground">
                 {table?.capacity ? `${table.capacity} seats · ` : ""}
                 {existingOrder ? "order in progress" : "new order"}
@@ -181,7 +181,7 @@ export function OrderPage() {
               <ShoppingBag size={22} />
             </div>
             <div>
-              <h1 className="font-serif text-xl font-bold leading-tight">{title}</h1>
+              <h1 className="font-heading text-xl font-bold leading-tight">{title}</h1>
               <p className="text-xs text-muted-foreground">{subtitle}</p>
             </div>
           </div>
@@ -193,7 +193,7 @@ export function OrderPage() {
             <span className="text-xs uppercase tracking-wide text-muted-foreground">
               {cart.count} item{cart.count === 1 ? "" : "s"}
             </span>
-            <span className="font-serif text-lg font-bold nums">{inr(orderTotal)}</span>
+            <span className="font-heading text-lg font-bold nums">{inr(orderTotal)}</span>
           </div>
         </div>
       </div>
@@ -239,7 +239,7 @@ export function OrderPage() {
       <Dialog open={payOpen} onOpenChange={(o) => !o && !busy && setPayOpen(false)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-serif">{isDineIn ? "Settle bill" : "Checkout"}</DialogTitle>
+            <DialogTitle className="font-heading">{isDineIn ? "Settle bill" : "Checkout"}</DialogTitle>
           </DialogHeader>
           <PayFields
             subtotal={cart.subtotal}
@@ -278,7 +278,7 @@ function SuccessDialog({ success, onDone }: { success: { message: string } | nul
         <DialogTitle className="sr-only">{success?.message ?? "Success"}</DialogTitle>
         <div className="flex flex-col items-center gap-4 py-4 text-center">
           <AnimatedCheck size={72} />
-          <p className="font-serif text-xl font-bold">{success?.message}</p>
+          <p className="font-heading text-xl font-bold">{success?.message}</p>
         </div>
       </DialogContent>
     </Dialog>
@@ -373,7 +373,7 @@ function PayFields({
         {delivery > 0 && <Row label="Delivery" value={inr(delivery)} muted />}
         <div className="flex items-baseline justify-between pt-1">
           <span className="text-sm font-medium uppercase tracking-wide">Total</span>
-          <span className="font-serif text-2xl font-bold nums">{inr(total)}</span>
+          <span className="font-heading text-2xl font-bold nums">{inr(total)}</span>
         </div>
       </div>
 

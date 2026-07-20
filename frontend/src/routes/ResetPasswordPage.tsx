@@ -35,7 +35,7 @@ export function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-muted p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="font-serif text-2xl font-bold">Reset password</CardTitle>
+          <CardTitle className="font-heading text-2xl font-bold">Reset password</CardTitle>
           <p className="text-sm text-muted-foreground">Choose a new password for your account.</p>
         </CardHeader>
         <CardContent className="space-y-3">

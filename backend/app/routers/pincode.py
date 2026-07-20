@@ -10,7 +10,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.config import get_settings
-from app.core.deps import get_current_user
+from app.core.deps import require_user_session
 
 router = APIRouter(prefix="/pincode", tags=["pincode"])
 logger = logging.getLogger("cafepos.pincode")
@@ -32,7 +32,7 @@ def _pick(offices: list[dict]) -> dict:
 
 
 @router.get("/{pincode}")
-async def lookup_pincode(pincode: str, current_user: dict = Depends(get_current_user)):
+async def lookup_pincode(pincode: str, current_user: dict = Depends(require_user_session)):
     """Resolve a 6-digit Indian pincode to {city, district, state}."""
     if not (pincode.isdigit() and len(pincode) == 6):
         raise HTTPException(status_code=400, detail="Enter a 6-digit pincode.")

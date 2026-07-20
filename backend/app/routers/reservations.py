@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_user_session
 from app.db.mongo import db
 from app.db.serialization import to_mongo
 from app.models.common import ReservationStatus, TableStatus
@@ -21,7 +21,7 @@ async def get_reservations(date_filter: Optional[str] = None, current_user: dict
 
 
 @router.post("", response_model=Reservation)
-async def create_reservation(payload: ReservationCreate, current_user: dict = Depends(get_current_user)):
+async def create_reservation(payload: ReservationCreate, current_user: dict = Depends(require_user_session)):
     reservation = Reservation(cafe_id=current_user["cafe_id"], **payload.model_dump())
     await db.reservations.insert_one(to_mongo(reservation))
     await db.tables.update_one(
@@ -32,7 +32,7 @@ async def create_reservation(payload: ReservationCreate, current_user: dict = De
 
 
 @router.put("/{reservation_id}", response_model=Reservation)
-async def update_reservation(reservation_id: str, payload: ReservationUpdate, current_user: dict = Depends(get_current_user)):
+async def update_reservation(reservation_id: str, payload: ReservationUpdate, current_user: dict = Depends(require_user_session)):
     existing = await db.reservations.find_one({"id": reservation_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Reservation not found.")
@@ -45,7 +45,7 @@ async def update_reservation(reservation_id: str, payload: ReservationUpdate, cu
 
 
 @router.delete("/{reservation_id}")
-async def cancel_reservation(reservation_id: str, current_user: dict = Depends(get_current_user)):
+async def cancel_reservation(reservation_id: str, current_user: dict = Depends(require_user_session)):
     reservation = await db.reservations.find_one({"id": reservation_id})
     if not reservation:
         raise HTTPException(status_code=404, detail="Reservation not found.")

@@ -8,8 +8,22 @@ module.exports = {
   theme: {
   	extend: {
   		fontFamily: {
+  			/* Body copy. */
   			sans: ['Montserrat', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-  			serif: ['"Playfair Display"', 'ui-serif', 'Georgia', 'serif'],
+  			/* Headings and display numbers — use `font-heading`. Archivo is loaded
+  			   as a variable font and pinned to the Expanded end of its width axis
+  			   (wdth 62–125), which is what gives titles and table numbers their
+  			   width. Weight still comes from the usual font-* utilities. */
+  			heading: [
+  				['"Archivo Variable"', '"Archivo Fallback"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+  				{ fontVariationSettings: '"wdth" 125' },
+  			],
+  			/* Kept pointing at the heading stack so any stray `font-serif`
+  			   doesn't fall back to a mismatched system serif. */
+  			serif: [
+  				['"Archivo Variable"', '"Archivo Fallback"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+  				{ fontVariationSettings: '"wdth" 125' },
+  			],
   		},
   		/* Square corners across the whole app — every rounded-* utility resolves to 0. */
   		borderRadius: {

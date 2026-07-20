@@ -55,7 +55,7 @@ export function HistoryPage() {
 
   return (
     <div className="h-full overflow-auto p-6 space-y-6">
-      <h2 className="font-serif text-2xl font-bold">History &amp; Day Session</h2>
+      <h2 className="font-heading text-2xl font-bold">History &amp; Day Session</h2>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
@@ -94,7 +94,7 @@ export function HistoryPage() {
         <Card>
           <CardContent className="p-4">
             <h3 className="font-semibold text-sm mb-2 uppercase tracking-wide text-muted-foreground">Today</h3>
-            <p className="font-serif text-3xl font-bold nums">{inr(report?.total_sales ?? 0)}</p>
+            <p className="font-heading text-3xl font-bold nums">{inr(report?.total_sales ?? 0)}</p>
             <p className="text-sm text-muted-foreground nums">{report?.total_bills ?? 0} bills</p>
           </CardContent>
         </Card>

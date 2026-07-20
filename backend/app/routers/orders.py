@@ -3,7 +3,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_user_session
 from app.db.mongo import db
 from app.db.serialization import to_mongo
 from app.models.common import OrderStatus, TableStatus, new_id
@@ -141,7 +141,7 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate, current
 
 
 @router.delete("/{order_id}")
-async def cancel_order(order_id: str, current_user: dict = Depends(get_current_user)):
+async def cancel_order(order_id: str, current_user: dict = Depends(require_user_session)):
     order = await db.orders.find_one({"id": order_id})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found.")

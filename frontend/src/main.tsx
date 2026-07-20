@@ -5,6 +5,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import type { Persister } from "@tanstack/query-persist-client-core";
 import { del, get, set } from "idb-keyval";
+import { CACHE_VERSION, QUERY_CACHE_KEY } from "@/lib/cache";
 import { IconContext } from "@phosphor-icons/react";
 
 // Self-hosted fonts (no runtime CDN).
@@ -12,9 +13,10 @@ import "@fontsource/montserrat/400.css";
 import "@fontsource/montserrat/500.css";
 import "@fontsource/montserrat/600.css";
 import "@fontsource/montserrat/700.css";
-import "@fontsource/playfair-display/500.css";
-import "@fontsource/playfair-display/600.css";
-import "@fontsource/playfair-display/700.css";
+// Archivo's width axis, so headings can sit at Expanded (wdth 125) — see the
+// `heading` stack in tailwind.config.cjs. One variable file covers every weight
+// and width, which is smaller than the three static cuts it replaces.
+import "@fontsource-variable/archivo/wdth.css";
 
 import { router } from "./App";
 import { AuthProvider } from "@/auth/AuthContext";
@@ -45,16 +47,18 @@ const queryClient = new QueryClient({
 // orders are readable when the device is offline (localStorage is too small for
 // the full cache; IndexedDB via idb-keyval is the right store).
 const idbPersister: Persister = {
-  persistClient: (client) => set("pos_query_cache", client),
-  restoreClient: () => get("pos_query_cache"),
-  removeClient: () => del("pos_query_cache"),
+  persistClient: (client) => set(QUERY_CACHE_KEY, client),
+  restoreClient: () => get(QUERY_CACHE_KEY),
+  removeClient: () => del(QUERY_CACHE_KEY),
 };
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <PersistQueryClientProvider
       client={queryClient}
-      persistOptions={{ persister: idbPersister, maxAge: CACHE_MAX_AGE }}
+      // `buster` discards snapshots written by an older response shape, so a
+      // stale cached payload can't hydrate into code expecting new fields.
+      persistOptions={{ persister: idbPersister, maxAge: CACHE_MAX_AGE, buster: CACHE_VERSION }}
     >
       <IconContext.Provider value={{ weight: "regular", size: 18 }}>
         <AuthProvider>

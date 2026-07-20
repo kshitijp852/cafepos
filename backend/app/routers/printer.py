@@ -7,7 +7,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_user_session
 from app.db.mongo import db
 
 router = APIRouter(prefix="/printer", tags=["printer"])
@@ -15,7 +15,7 @@ logger = logging.getLogger("cafepos")
 
 
 @router.post("/bill")
-async def print_bill(bill_id: str, current_user: dict = Depends(get_current_user)):
+async def print_bill(bill_id: str, current_user: dict = Depends(require_user_session)):
     bill = await db.bills.find_one({"id": bill_id}, {"_id": 0})
     if not bill or bill["cafe_id"] != current_user["cafe_id"]:
         raise HTTPException(status_code=404, detail="Bill not found")

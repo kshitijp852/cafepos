@@ -56,3 +56,8 @@ class TableUpdate(BaseModel):
     capacity: Optional[int] = None
     status: Optional[TableStatus] = None
     current_order_id: Optional[str] = None
+
+
+class TableTransfer(BaseModel):
+    """Move the sitting at one table to another."""
+    to_table_id: str

@@ -77,7 +77,7 @@ export function StaffDetailPage() {
           <ArrowLeft size={20} />
         </Button>
         <div>
-          <h1 className="font-serif text-2xl font-bold">{data.staff.name}</h1>
+          <h1 className="font-heading text-2xl font-bold">{data.staff.name}</h1>
           <p className="text-sm text-muted-foreground">
             <span className="font-mono">@{data.staff.username}</span>
             {data.last_active ? ` · last active ${timeAgo(data.last_active)}` : ""}
@@ -99,7 +99,7 @@ export function StaffDetailPage() {
         {kpis.map((k) => (
           <div key={k.label} className="bg-card p-4">
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{k.label}</div>
-            <div className="mt-1 font-serif text-2xl font-bold nums">{k.value}</div>
+            <div className="mt-1 font-heading text-2xl font-bold nums">{k.value}</div>
           </div>
         ))}
       </div>
@@ -178,7 +178,7 @@ export function StaffDetailPage() {
       <Dialog open={!!edit} onOpenChange={(o) => !o && !saving && setEdit(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-serif">Edit {data.staff.name}</DialogTitle>
+            <DialogTitle className="font-heading">Edit {data.staff.name}</DialogTitle>
           </DialogHeader>
           {edit && (
             <div className="space-y-3">
