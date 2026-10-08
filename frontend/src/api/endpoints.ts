@@ -451,3 +451,77 @@ export const deactivateWaiter = (id: string) =>
 export const reactivateWaiter = (id: string) =>
   api.post(`/waiters/${id}/activate`).then((r) => r.data);
 export const deleteWaiter = (id: string) => api.delete(`/waiters/${id}`).then((r) => r.data);
+
+// ---- UPI auto-settle (dynamic QR + payment webhooks) ----
+export type PaymentSettings = {
+  enabled: boolean;
+  provider: string;
+  providers: string[];
+  merchant_id: string;
+  vpa: string;
+  payee_name: string;
+  webhook_secret_set: boolean;
+  webhook_path: string;
+};
+export type PaymentSettingsInput = Partial<
+  Pick<PaymentSettings, "enabled" | "provider" | "merchant_id" | "vpa" | "payee_name">
+> & { webhook_secret?: string };
+export type PaymentRequest = {
+  id: string;
+  reference: string;
+  provider: string;
+  table_id: string | null;
+  order_id: string | null;
+  amount: number;
+  status: "pending" | "paid" | "cancelled";
+  qr_payload: string;
+  bill_id: string | null;
+  created_at: string;
+};
+export type PaymentRequestInput = {
+  table_id?: string | null;
+  order_id?: string | null;
+  items: OrderItem[];
+  packing_charge?: number;
+  delivery_charge?: number;
+  customer_name?: string;
+  customer_phone?: string;
+};
+export type ReviewReason =
+  | "unknown_reference"
+  | "amount_mismatch"
+  | "already_settled"
+  | "stale_qr"
+  | "order_changed"
+  | "no_match"
+  | "multiple_matches";
+export type UpiPayment = {
+  id: string;
+  transaction_id: string;
+  amount: number;
+  reference: string | null;
+  status: "settled" | "needs_review" | "dismissed" | "ignored";
+  review_reason: ReviewReason | null;
+  candidate_table_ids: string[];
+  table_id: string | null;
+  bill_id: string | null;
+  received_at: string;
+};
+export const getPaymentSettings = () =>
+  api.get<PaymentSettings>("/payments/settings").then((r) => r.data);
+export const updatePaymentSettings = (d: PaymentSettingsInput) =>
+  api.put<PaymentSettings>("/payments/settings", d).then((r) => r.data);
+export const createPaymentRequest = (d: PaymentRequestInput) =>
+  api.post<PaymentRequest>("/payments/requests", d).then((r) => r.data);
+export const getPaymentRequest = (id: string) =>
+  api.get<PaymentRequest>(`/payments/requests/${id}`).then((r) => r.data);
+export const cancelPaymentRequest = (id: string) =>
+  api.post(`/payments/requests/${id}/cancel`).then((r) => r.data);
+export const simulateUpiPayment = (amount: number, reference?: string) =>
+  api.post("/payments/mock/simulate", { amount, reference }).then((r) => r.data);
+export const getPaymentsToReview = () =>
+  api.get<UpiPayment[]>("/payments", { params: { status: "needs_review" } }).then((r) => r.data);
+export const assignPayment = (id: string, tableId: string) =>
+  api.post<UpiPayment>(`/payments/${id}/assign`, { table_id: tableId }).then((r) => r.data);
+export const dismissPayment = (id: string, note?: string) =>
+  api.post<UpiPayment>(`/payments/${id}/dismiss`, { note }).then((r) => r.data);

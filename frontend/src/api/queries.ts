@@ -21,7 +21,18 @@ export const keys = {
   profile: ["profile"] as const,
   device: ["device", "me"] as const,
   reconciliation: ["reconciliation"] as const,
+  paymentSettings: ["payments", "settings"] as const,
+  paymentReviews: ["payments", "review"] as const,
 };
+
+// UPI auto-settle config (`enabled` decides whether Settle offers a QR).
+export const usePaymentSettings = () =>
+  useQuery({ queryKey: keys.paymentSettings, queryFn: api.getPaymentSettings, staleTime: 60000 });
+
+// UPI payments that arrived but couldn't be matched to a table on their own.
+// Live events invalidate this immediately; the poll is a fallback.
+export const usePaymentReviews = (enabled = true) =>
+  useQuery({ queryKey: keys.paymentReviews, queryFn: api.getPaymentsToReview, refetchInterval: 20000, enabled });
 
 // Conflicts left by offline replay (duplicate orders / double-settled bills).
 export const useReconciliation = () =>

@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { AppLayout } from "@/components/AppLayout";
+import { LiveShell } from "@/components/LiveShell";
 import { ErrorPage } from "@/components/ErrorPage";
 import { RequireAuth } from "@/components/RequireAuth";
 import { LoginPage } from "@/routes/LoginPage";
@@ -51,28 +52,33 @@ export const router = createBrowserRouter([
     element: <RequireAuth allowedRoles={["owner", "superadmin"]} redirectStaffToWaiter />,
     errorElement: <ErrorPage />,
     children: [
-      // Ordering is full-screen (its own header, no app chrome) — a focused task.
-      { path: "/order", element: <OrderPage /> },
-      { path: "/order/:tableId", element: <OrderPage /> },
-      { path: "/take-away", element: <Navigate to="/order" replace /> },
       {
-        element: <AppLayout />,
-        errorElement: <ErrorPage />,
+        element: <LiveShell />,
         children: [
-          { index: true, element: <Navigate to="/dashboard" replace /> },
-          { path: "/dashboard", element: <DashboardPage /> },
-          { path: "/menu", element: <MenuPage /> },
-          { path: "/tables", element: <TablesPage /> },
-          { path: "/staff", element: <StaffPage /> },
-          { path: "/staff/:id", element: <StaffDetailPage /> },
-          { path: "/reservations", element: <ReservationsPage /> },
-          { path: "/analytics", element: <AnalyticsPage /> },
-          { path: "/customers", element: <CustomersPage /> },
-          { path: "/history", element: <HistoryPage /> },
-          { path: "/reconcile", element: <ReconciliationPage /> },
-          { path: "/inventory", element: <InventoryPage /> },
-          { path: "/settings", element: <SettingsPage /> },
-          { path: "/profile", element: <ProfilePage /> },
+          // Ordering is full-screen (its own header, no app chrome) — a focused task.
+          { path: "/order", element: <OrderPage /> },
+          { path: "/order/:tableId", element: <OrderPage /> },
+          { path: "/take-away", element: <Navigate to="/order" replace /> },
+          {
+            element: <AppLayout />,
+            errorElement: <ErrorPage />,
+            children: [
+              { index: true, element: <Navigate to="/dashboard" replace /> },
+              { path: "/dashboard", element: <DashboardPage /> },
+              { path: "/menu", element: <MenuPage /> },
+              { path: "/tables", element: <TablesPage /> },
+              { path: "/staff", element: <StaffPage /> },
+              { path: "/staff/:id", element: <StaffDetailPage /> },
+              { path: "/reservations", element: <ReservationsPage /> },
+              { path: "/analytics", element: <AnalyticsPage /> },
+              { path: "/customers", element: <CustomersPage /> },
+              { path: "/history", element: <HistoryPage /> },
+              { path: "/reconcile", element: <ReconciliationPage /> },
+              { path: "/inventory", element: <InventoryPage /> },
+              { path: "/settings", element: <SettingsPage /> },
+              { path: "/profile", element: <ProfilePage /> },
+            ],
+          },
         ],
       },
     ],

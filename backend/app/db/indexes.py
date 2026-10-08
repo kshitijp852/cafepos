@@ -37,6 +37,12 @@ _INDEXES = [
     ("device_activations", [("user_id", ASCENDING), ("device_id", ASCENDING)], {"unique": True}),
     ("device_activations", [("code", ASCENDING)], {}),
     ("device_activations", [("expires_at", ASCENDING)], {"expireAfterSeconds": 0}),
+    # UPI auto-settle. Unique transaction id makes gateway webhook retries no-ops.
+    ("payments", [("cafe_id", ASCENDING), ("provider", ASCENDING), ("transaction_id", ASCENDING)], {"unique": True}),
+    ("payments", [("cafe_id", ASCENDING), ("status", ASCENDING)], {}),
+    ("payment_requests", [("cafe_id", ASCENDING), ("reference", ASCENDING)], {"unique": True}),
+    ("payment_requests", [("cafe_id", ASCENDING), ("status", ASCENDING)], {}),
+    ("payment_settings", [("cafe_id", ASCENDING)], {"unique": True}),
     # Signup/reset ephemeral records. TTL indexes (expireAfterSeconds=0) let
     # Mongo auto-purge expired docs — requires expires_at stored as a BSON date.
     ("pending_registrations", [("email", ASCENDING)], {"unique": True}),
