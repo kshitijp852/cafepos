@@ -13,10 +13,12 @@ from app.routers import (
     auth,
     bills,
     cafe,
+    events,
     health,
     inventory,
     menu,
     orders,
+    payments,
     pincode,
     printer,
     profile,
@@ -61,6 +63,6 @@ app.add_middleware(
 register_exception_handlers(app)
 
 api_router = APIRouter(prefix="/api")
-for module in (health, auth, cafe, profile, pincode, waiters, menu, tables, orders, bills, reservations, sessions, reports, inventory, printer, reconciliation):
+for module in (health, auth, cafe, profile, pincode, waiters, menu, tables, orders, bills, reservations, sessions, reports, inventory, printer, reconciliation, payments, events):
     api_router.include_router(module.router)
 app.include_router(api_router)

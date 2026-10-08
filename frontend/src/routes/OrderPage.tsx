@@ -1,11 +1,27 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Printer, ShoppingBag } from "@phosphor-icons/react";
+import { ArrowLeft, Printer, QrCode, ShoppingBag } from "@phosphor-icons/react";
 import { toast } from "@/components/ui/sonner";
 
 import { errorMessage } from "@/api/client";
-import { createBill, createOrder, printBill, updateOrder } from "@/api/endpoints";
-import { useActiveOrders, useCafe, useCategories, useInvalidate, useMenuItems, useTables } from "@/api/queries";
+import {
+  createBill,
+  createOrder,
+  createPaymentRequest,
+  getBill,
+  printBill,
+  updateOrder,
+  type PaymentRequest,
+} from "@/api/endpoints";
+import {
+  useActiveOrders,
+  useCafe,
+  useCategories,
+  useInvalidate,
+  useMenuItems,
+  usePaymentSettings,
+  useTables,
+} from "@/api/queries";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +30,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AnimatedCheck } from "@/components/AnimatedCheck";
 import { OfflineStatus } from "@/components/OfflineStatus";
 import { PaymentMethodPicker } from "@/features/billing/PaymentMethodPicker";
+import { UpiQrDialog } from "@/features/billing/UpiQrDialog";
 import { CartPanel } from "@/features/cart/CartPanel";
 import { MenuBrowser } from "@/features/cart/MenuBrowser";
 import { useCart } from "@/features/cart/useCart";
@@ -42,6 +59,8 @@ export function OrderPage() {
   const { data: categories = [] } = useCategories();
   const { data: cafe } = useCafe();
   const { orders } = useActiveOrders();
+  const { data: paymentSettings } = usePaymentSettings();
+  const upiAuto = !!paymentSettings?.enabled;
 
   const table = tables.find((t) => t.id === tableId);
   const existingOrder = isDineIn ? orders.find((o) => o.table_id === tableId) : undefined;
@@ -57,6 +76,7 @@ export function OrderPage() {
   const [payOpen, setPayOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [placed, setPlaced] = useState<Bill | null>(null); // take-away pickup token
+  const [qr, setQr] = useState<PaymentRequest | null>(null); // live UPI QR for this bill
   const [customer, setCustomer] = useState({ name: "", phone: "" });
   const [charges, setCharges] = useState({ packing: 0, delivery: 0 });
   // Centered success popup with the animated tick; runs `then` after it shows.
@@ -98,38 +118,74 @@ export function OrderPage() {
     }
   };
 
+  // Customer details are required for every settle (receipt + WhatsApp).
+  const validCustomer = () => {
+    if (!customer.name.trim()) {
+      toast.error("Enter the customer's name.");
+      return false;
+    }
+    if (customer.phone.replace(/\D/g, "").length < 8) {
+      toast.error("Enter a valid phone number.");
+      return false;
+    }
+    return true;
+  };
+
+  const settleDetails = () => ({
+    table_id: tableId ?? null,
+    items: cart.items,
+    packing_charge: isDineIn ? 0 : charges.packing,
+    delivery_charge: isDineIn ? 0 : charges.delivery,
+    order_id: existingOrder?.id ?? null,
+    customer_name: customer.name.trim() || undefined,
+    customer_phone: customer.phone.trim() || undefined,
+  });
+
+  const afterSettled = async (bill: Bill) => {
+    await printBillBestEffort(bill, cafe);
+    await invalidate(["orders", "tables", "bills", "report"]);
+    setPayOpen(false);
+    if (isDineIn) {
+      setSuccess({ message: `Bill #${formatBillNo(bill)} settled`, then: () => navigate("/dashboard") });
+    } else {
+      cart.clear();
+      setCustomer({ name: "", phone: "" });
+      setPlaced(bill);
+    }
+  };
+
   const settle = async () => {
-    if (cart.count === 0) return;
-    const name = customer.name.trim();
-    const phoneDigits = customer.phone.replace(/\D/g, "");
-    if (!name) return toast.error("Enter the customer's name.");
-    if (phoneDigits.length < 8) return toast.error("Enter a valid phone number.");
+    if (cart.count === 0 || !validCustomer()) return;
     setBusy(true);
     try {
-      const bill = await createBill({
-        table_id: tableId ?? null,
-        items: cart.items,
-        packing_charge: isDineIn ? 0 : charges.packing,
-        delivery_charge: isDineIn ? 0 : charges.delivery,
-        payment_method: method,
-        order_id: existingOrder?.id ?? null,
-        customer_name: customer.name.trim() || undefined,
-        customer_phone: customer.phone.trim() || undefined,
-      });
-      await printBillBestEffort(bill, cafe);
-      await invalidate(["orders", "tables", "bills", "report"]);
-      setPayOpen(false);
-      if (isDineIn) {
-        setSuccess({ message: `Bill #${formatBillNo(bill)} settled`, then: () => navigate("/dashboard") });
-      } else {
-        cart.clear();
-        setCustomer({ name: "", phone: "" });
-        setPlaced(bill);
-      }
+      await afterSettled(await createBill({ ...settleDetails(), payment_method: method }));
     } catch (err) {
       toast.error(errorMessage(err, "Failed to settle"));
     } finally {
       setBusy(false);
+    }
+  };
+
+  // UPI auto-settle: show a QR carrying this bill's reference. The server
+  // settles the bill when the gateway confirms payment; we then print it.
+  const showQr = async () => {
+    if (cart.count === 0 || !validCustomer()) return;
+    setBusy(true);
+    try {
+      setQr(await createPaymentRequest(settleDetails()));
+    } catch (err) {
+      toast.error(errorMessage(err, "Couldn't create the UPI QR"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onQrPaid = async (billId: string) => {
+    setQr(null);
+    try {
+      await afterSettled(await getBill(billId));
+    } catch (err) {
+      toast.error(errorMessage(err, "Paid, but the bill couldn't be loaded. Check History."));
     }
   };
 
@@ -254,9 +310,13 @@ export function OrderPage() {
             setCustomer={setCustomer}
             busy={busy}
             onConfirm={settle}
+            upiAuto={upiAuto}
+            onShowQr={showQr}
           />
         </DialogContent>
       </Dialog>
+
+      <UpiQrDialog request={qr} onPaid={onQrPaid} onClose={() => setQr(null)} />
 
       {/* Success popup with animated tick */}
       <SuccessDialog success={success} onDone={() => { const t = success?.then; setSuccess(null); t?.(); }} />
@@ -298,6 +358,8 @@ function PayFields({
   setCustomer,
   busy,
   onConfirm,
+  upiAuto,
+  onShowQr,
 }: {
   subtotal: number;
   cgstPct: number;
@@ -311,6 +373,8 @@ function PayFields({
   setCustomer: (c: { name: string; phone: string }) => void;
   busy: boolean;
   onConfirm: () => void;
+  upiAuto: boolean;
+  onShowQr: () => void;
 }) {
   const cgst = subtotal * (cgstPct / 100);
   const sgst = subtotal * (sgstPct / 100);
@@ -377,9 +441,20 @@ function PayFields({
         </div>
       </div>
 
-      <Button variant="success" className="w-full" size="lg" onClick={onConfirm} disabled={busy || !canConfirm}>
-        <Printer size={16} /> {busy ? "Processing…" : "Confirm & Print"}
-      </Button>
+      {method === "upi" && upiAuto ? (
+        <div className="space-y-2">
+          <Button variant="success" className="w-full" size="lg" onClick={onShowQr} disabled={busy || !canConfirm}>
+            <QrCode size={16} /> {busy ? "Processing…" : "Show UPI QR"}
+          </Button>
+          <Button variant="ghost" className="w-full" size="sm" onClick={onConfirm} disabled={busy || !canConfirm}>
+            Already paid? Confirm & print without QR
+          </Button>
+        </div>
+      ) : (
+        <Button variant="success" className="w-full" size="lg" onClick={onConfirm} disabled={busy || !canConfirm}>
+          <Printer size={16} /> {busy ? "Processing…" : "Confirm & Print"}
+        </Button>
+      )}
     </div>
   );
 }
