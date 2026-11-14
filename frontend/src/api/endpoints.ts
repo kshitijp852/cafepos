@@ -9,7 +9,6 @@ import type {
   FoodType,
   DailyReport,
   DaySession,
-  DeviceActivation,
   Floor,
   InventoryItem,
   MenuItem,
@@ -386,38 +385,6 @@ export const changePassword = (d: {
 export const getWaiters = () => api.get<User[]>("/waiters").then((r) => r.data);
 export const createWaiter = (d: { name: string; username?: string }) =>
   api.post<User>("/waiters", d).then((r) => r.data);
-
-// ---- Devices (device-code pairing; manager assigns the current waiter) ----
-export type AssignedUser = { id: string; name: string; username?: string } | null;
-export type DeviceInfo = { device_id: string; device_name?: string | null; assigned_user: AssignedUser };
-
-// Device poll: pending until a manager activates it, then a device token pair.
-export type DevicePollResult =
-  | { status: "pending" }
-  | { status: "active"; token: string; refresh_token: string; device: DeviceInfo };
-export const requestDeviceCode = (device_id: string) =>
-  api.post<{ code: string; expires_at: string }>("/waiters/devices/request", { device_id }).then((r) => r.data);
-export const pollDeviceCode = (d: { device_id: string; code: string }) =>
-  api.post<DevicePollResult>("/waiters/devices/poll", d).then((r) => r.data);
-
-// Waiter app: the device's own name + currently assigned waiter (polled live).
-export const getDeviceMe = () => api.get<DeviceInfo>("/devices/me").then((r) => r.data);
-
-export const waiterLogout = (device_id: string) =>
-  api.post("/waiters/devices/logout", { device_id }).then((r) => r.data);
-
-// Manager: authorize a pending device by code (optionally name it + assign a waiter).
-export const activateWaiterDevice = (d: { code: string; waiter_id?: string; device_name?: string }) =>
-  api.post<{ success: boolean; message: string }>("/waiters/devices/activate", d).then((r) => r.data);
-
-// Manager: set/clear the current waiter on a device and/or rename it.
-export const assignDevice = (activationId: string, d: { user_id?: string | null; device_name?: string }) =>
-  api.patch<DeviceActivation>(`/waiters/devices/${activationId}`, d).then((r) => r.data);
-
-export const getWaiterDevices = () =>
-  api.get<DeviceActivation[]>("/waiters/devices").then((r) => r.data);
-export const revokeWaiterDevice = (id: string) =>
-  api.delete(`/waiters/devices/${id}`).then((r) => r.data);
 
 export type WaiterStats = {
   staff: User;

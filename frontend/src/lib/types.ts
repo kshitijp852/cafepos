@@ -1,6 +1,6 @@
 // Domain types mirroring the backend Pydantic models.
 
-export type Role = "superadmin" | "owner" | "staff";
+export type Role = "platform_admin" | "owner" | "manager" | "waiter" | "kitchen";
 export type PaymentMethod = "cash" | "card" | "upi";
 export type OrderStatus =
   | "pending"
@@ -16,7 +16,6 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  username?: string | null;
   phone?: string | null;
   role: Role;
   cafe_id: string;
@@ -185,20 +184,4 @@ export interface DailyReport {
   total_sales: number;
   payment_breakdown: Record<PaymentMethod, number>;
   popular_items: [string, number][];
-}
-
-export interface DeviceActivation {
-  id: string;
-  user_id?: string | null;
-  cafe_id: string;
-  device_id: string;
-  code: string;
-  device_name?: string | null;
-  status: "pending" | "active";
-  signed_in?: boolean;
-  last_login?: string | null;
-  last_logout?: string | null;
-  assigned_user?: { id: string; name: string; username?: string } | null;
-  created_at: string;
-  activated_at?: string | null;
 }

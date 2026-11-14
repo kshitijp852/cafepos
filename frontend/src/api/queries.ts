@@ -16,10 +16,8 @@ export const keys = {
   sessionHistory: ["session", "history"] as const,
   dailyReport: (date?: string) => ["report", date ?? "today"] as const,
   waiters: ["waiters"] as const,
-  waiterDevices: ["waiterDevices"] as const,
   cafe: ["cafe"] as const,
   profile: ["profile"] as const,
-  device: ["device", "me"] as const,
   reconciliation: ["reconciliation"] as const,
 };
 
@@ -32,10 +30,6 @@ export const useCafe = () => useQuery({ queryKey: keys.cafe, queryFn: api.getCaf
 // Owner's account + business identity; `gst_required` drives the compliance banner.
 export const useProfile = () =>
   useQuery({ queryKey: keys.profile, queryFn: api.getProfile, staleTime: 60000 });
-
-// Waiter app: current device name + assigned waiter, polled so manager reassignment shows up live.
-export const useDevice = () =>
-  useQuery({ queryKey: keys.device, queryFn: api.getDeviceMe, refetchInterval: 10000 });
 
 export const useCategories = () =>
   useQuery({ queryKey: keys.categories, queryFn: api.getCategories });
@@ -86,9 +80,6 @@ export const useDailyReport = (date?: string) =>
   useQuery({ queryKey: keys.dailyReport(date), queryFn: () => api.getDailyReport(date) });
 
 export const useWaiters = () => useQuery({ queryKey: keys.waiters, queryFn: api.getWaiters });
-
-export const useWaiterDevices = () =>
-  useQuery({ queryKey: keys.waiterDevices, queryFn: api.getWaiterDevices });
 
 /** Invalidate several top-level query families at once after a mutation. */
 export function useInvalidate() {

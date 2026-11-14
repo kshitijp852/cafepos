@@ -4,7 +4,6 @@ import {
   CaretDown,
   CaretLineLeft,
   CaretLineRight,
-  DeviceMobile,
   List,
   SignOut,
   UserCircle,
@@ -30,12 +29,10 @@ function initials(name?: string) {
 function AccountMenu({
   user,
   onProfile,
-  onWaiterMode,
   onLogout,
 }: {
   user: User | null;
   onProfile: () => void;
-  onWaiterMode: () => void;
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -92,17 +89,6 @@ function AccountMenu({
           >
             <UserCircle size={18} />
             Profile
-          </button>
-          <button
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onWaiterMode();
-            }}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-accent"
-          >
-            <DeviceMobile size={18} />
-            Waiter Mode
           </button>
           <div className="border-t border-border" />
           <button
@@ -208,7 +194,6 @@ export function AppLayout() {
             <AccountMenu
               user={user}
               onProfile={() => navigate("/profile")}
-              onWaiterMode={() => navigate("/waiter")}
               onLogout={handleLogout}
             />
           </div>
