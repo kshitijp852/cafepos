@@ -19,6 +19,7 @@ import { CustomersPage } from "@/routes/CustomersPage";
 import { InventoryPage } from "@/routes/InventoryPage";
 import { SettingsPage } from "@/routes/SettingsPage";
 import { ProfilePage } from "@/routes/ProfilePage";
+import { AdminPlaceholderPage } from "@/routes/admin/AdminPlaceholderPage";
 import { WaiterTablesPage } from "@/routes/waiter/WaiterTablesPage";
 import { WaiterOrderPage } from "@/routes/waiter/WaiterOrderPage";
 import { WaiterKitchenPage } from "@/routes/waiter/WaiterKitchenPage";
@@ -28,6 +29,14 @@ import { WaiterKitchenPage } from "@/routes/waiter/WaiterKitchenPage";
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage />, errorElement: <ErrorPage /> },
   { path: "/reset", element: <ResetPasswordPage />, errorElement: <ErrorPage /> },
+
+  // Platform-admin app — placeholder landing until Slice 5 builds the real
+  // cafe-approval dashboard.
+  {
+    element: <RequireAuth allowedRoles={["platform_admin"]} />,
+    errorElement: <ErrorPage />,
+    children: [{ path: "/admin", element: <AdminPlaceholderPage /> }],
+  },
 
   // Waiter app — a waiter/kitchen staff member's own login, same session as
   // everyone else, routed here by role.

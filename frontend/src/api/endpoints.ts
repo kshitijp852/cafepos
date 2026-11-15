@@ -48,6 +48,17 @@ export const registerVerify = (d: { email: string; otp: string }) =>
 export const loginUser = (d: { email: string; password: string }) =>
   api.post<AuthResponse>("/auth/login", d).then((r) => r.data);
 
+// Unified login step 1: branch into the OTP first-login path or the normal
+// password path. `dev_otp` is only present when the backend has no SMTP
+// configured (local dev).
+export const loginStart = (email: string) =>
+  api.post<{ next: "password" | "verify"; dev_otp?: string }>("/auth/login-start", { email }).then((r) => r.data);
+
+// Unified login step 2 (first-time sign-in only): verify the OTP, set the
+// password, and receive the authenticated session in one call.
+export const firstLogin = (d: { email: string; otp: string; password: string; confirm_password: string }) =>
+  api.post<AuthResponse>("/auth/first-login", d).then((r) => r.data);
+
 // Password reset — request a link, then confirm with the emailed token.
 export const requestPasswordReset = (email: string) =>
   api
@@ -408,7 +419,7 @@ export type WaiterStats = {
   last_active: string | null;
 };
 export const getWaiterStats = (id: string) =>
-  api.get<WaiterStats>(`/waiters/${id}/stats`).then((r) => r.data);
+  api.get<WaiterStats>(`/staff/${id}/stats`).then((r) => r.data);
 
 export const updateWaiter = (id: string, d: { name?: string; username?: string }) =>
   api.patch<User>(`/waiters/${id}`, d).then((r) => r.data);

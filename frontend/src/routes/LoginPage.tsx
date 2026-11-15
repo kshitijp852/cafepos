@@ -4,12 +4,15 @@ import { toast } from "@/components/ui/sonner";
 
 import { errorMessage } from "@/api/client";
 import {
+  firstLogin,
+  loginStart,
   loginUser,
   registerStart,
   registerVerify,
   requestPasswordReset,
 } from "@/api/endpoints";
 import { useAuth } from "@/auth/AuthContext";
+import { roleHome } from "@/auth/roleHome";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,8 +33,15 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
 
-  // ---- Login ----
-  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  // ---- Login (unified: email first, then password or first-time OTP) ----
+  const [loginStep, setLoginStep] = useState<"email" | "password" | "verify">("email");
+  const [loginForm, setLoginForm] = useState({
+    email: "",
+    password: "",
+    otp: "",
+    new_password: "",
+    confirm_password: "",
+  });
   const [forgot, setForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
 
@@ -54,17 +64,66 @@ export function LoginPage() {
 
   const emailInvalid = emailTouched && regForm.email.length > 0 && !EMAIL_RE.test(regForm.email);
 
-  if (user) return <Navigate to="/dashboard" replace />;
+  if (user) return <Navigate to={roleHome(user.role)} replace />;
 
-  const goDashboard = () => navigate("/dashboard", { replace: true });
+  const goHome = (auth: Awaited<ReturnType<typeof loginUser>>) => {
+    login(auth);
+    navigate(roleHome(auth.user.role), { replace: true });
+  };
+
+  const handleLoginStart = async () => {
+    if (!EMAIL_RE.test(loginForm.email)) return toast.error("Enter a valid email.");
+    setBusy(true);
+    try {
+      const res = await loginStart(loginForm.email);
+      if (res.next === "verify") {
+        setLoginStep("verify");
+        if (res.dev_otp) {
+          setLoginForm((f) => ({ ...f, otp: res.dev_otp! }));
+          toast.message(`Dev mode: code is ${res.dev_otp}`);
+        }
+      } else {
+        setLoginStep("password");
+      }
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not continue"));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleLogin = async () => {
     setBusy(true);
     try {
-      login(await loginUser(loginForm));
-      goDashboard();
+      goHome(await loginUser({ email: loginForm.email, password: loginForm.password }));
     } catch (err) {
       toast.error(errorMessage(err, "Login failed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resetLoginStep = () => {
+    setLoginStep("email");
+    setLoginForm((f) => ({ ...f, password: "", otp: "", new_password: "", confirm_password: "" }));
+  };
+
+  const handleFirstLogin = async () => {
+    if (loginForm.otp.length !== 6) return toast.error("Enter the 6-digit code.");
+    if (loginForm.new_password.length < 6) return toast.error("Password must be at least 6 characters.");
+    if (loginForm.new_password !== loginForm.confirm_password) return toast.error("Passwords do not match.");
+    setBusy(true);
+    try {
+      goHome(
+        await firstLogin({
+          email: loginForm.email,
+          otp: loginForm.otp,
+          password: loginForm.new_password,
+          confirm_password: loginForm.confirm_password,
+        }),
+      );
+    } catch (err) {
+      toast.error(errorMessage(err, "Verification failed"));
     } finally {
       setBusy(false);
     }
@@ -133,8 +192,7 @@ export function LoginPage() {
     if (otp.length !== 6) return toast.error("Enter the 6-digit code.");
     setBusy(true);
     try {
-      login(await registerVerify({ email: regForm.email, otp }));
-      goDashboard();
+      goHome(await registerVerify({ email: regForm.email, otp }));
     } catch (err) {
       toast.error(errorMessage(err, "Verification failed"));
     } finally {
@@ -149,7 +207,7 @@ export function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="font-heading text-3xl font-bold">Café POS</CardTitle>
-          <p className="text-sm text-muted-foreground">Manager access</p>
+          <p className="text-sm text-muted-foreground">Sign in to your account</p>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="login">
@@ -168,32 +226,100 @@ export function LoginPage() {
                       id="l-email"
                       type="email"
                       value={loginForm.email}
+                      disabled={loginStep !== "email"}
                       onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
+                      onKeyDown={(e) => e.key === "Enter" && loginStep === "email" && handleLoginStart()}
                     />
                   </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="l-pass">Password</Label>
-                    <Input
-                      id="l-pass"
-                      type="password"
-                      value={loginForm.password}
-                      onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                      onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                    />
-                  </div>
-                  <Button className="w-full" onClick={handleLogin} disabled={busy}>
-                    Login
-                  </Button>
-                  <button
-                    type="button"
-                    className="w-full text-sm text-foreground hover:underline"
-                    onClick={() => {
-                      setForgotEmail(loginForm.email);
-                      setForgot(true);
-                    }}
-                  >
-                    Forgot password?
-                  </button>
+
+                  {loginStep === "email" && (
+                    <Button className="w-full" onClick={handleLoginStart} disabled={busy}>
+                      Continue
+                    </Button>
+                  )}
+
+                  {loginStep === "password" && (
+                    <>
+                      <div className="space-y-1">
+                        <Label htmlFor="l-pass">Password</Label>
+                        <Input
+                          id="l-pass"
+                          type="password"
+                          autoFocus
+                          value={loginForm.password}
+                          onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                          onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                        />
+                      </div>
+                      <Button className="w-full" onClick={handleLogin} disabled={busy}>
+                        Login
+                      </Button>
+                      <button
+                        type="button"
+                        className="w-full text-sm text-foreground hover:underline"
+                        onClick={() => {
+                          setForgotEmail(loginForm.email);
+                          setForgot(true);
+                        }}
+                      >
+                        Forgot password?
+                      </button>
+                    </>
+                  )}
+
+                  {loginStep === "verify" && (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        First time signing in — enter the 6-digit code we sent to{" "}
+                        <b>{loginForm.email}</b>, then set a password.
+                      </p>
+                      <div className="space-y-1">
+                        <Label htmlFor="l-otp">Verification Code</Label>
+                        <Input
+                          id="l-otp"
+                          inputMode="numeric"
+                          maxLength={6}
+                          className="text-center text-lg tracking-[0.4em]"
+                          value={loginForm.otp}
+                          onChange={(e) =>
+                            setLoginForm({ ...loginForm, otp: e.target.value.replace(/\D/g, "").slice(0, 6) })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="l-newpass">New Password</Label>
+                        <Input
+                          id="l-newpass"
+                          type="password"
+                          value={loginForm.new_password}
+                          onChange={(e) => setLoginForm({ ...loginForm, new_password: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="l-confirmpass">Confirm Password</Label>
+                        <Input
+                          id="l-confirmpass"
+                          type="password"
+                          value={loginForm.confirm_password}
+                          onChange={(e) => setLoginForm({ ...loginForm, confirm_password: e.target.value })}
+                          onKeyDown={(e) => e.key === "Enter" && handleFirstLogin()}
+                        />
+                      </div>
+                      <Button className="w-full" onClick={handleFirstLogin} disabled={busy}>
+                        Verify &amp; set password
+                      </Button>
+                    </>
+                  )}
+
+                  {loginStep !== "email" && (
+                    <button
+                      type="button"
+                      className="w-full text-sm text-muted-foreground hover:underline"
+                      onClick={resetLoginStep}
+                    >
+                      Use a different email
+                    </button>
+                  )}
                 </>
               ) : (
                 <>
