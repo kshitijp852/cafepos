@@ -7,8 +7,6 @@ from app.core.config import get_settings
 from app.core.email import otp_email, reset_email, send_email
 from app.core.security import (
     create_access_token,
-    create_device_refresh_token,
-    create_device_token,
     create_refresh_token,
     decode_token,
     generate_otp,
@@ -24,6 +22,8 @@ from app.models.cafe import Cafe
 from app.models.common import Role, utcnow
 from app.models.user import (
     AuthResponse,
+    FirstLogin,
+    LoginStart,
     RegisterStart,
     RegisterVerify,
     ResetConfirm,
@@ -33,6 +33,7 @@ from app.models.user import (
     UserCreate,
     UserLogin,
 )
+from app.services.auth_otp import FIRST_LOGIN, send_first_login_otp
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 settings = get_settings()
@@ -65,10 +66,13 @@ async def _create_owner_and_cafe(*, email: str, name: str, cafe_name: str, passw
                                  phone: str | None = None) -> User:
     """Create the cafe + owner user pair used by both signup paths."""
     # Legacy/automation path — no GST collected, so the cafe is a test account.
-    cafe = Cafe(name=cafe_name, is_test_account=True)
+    # Test accounts auto-approve: pytest/local dev never gets stuck behind the
+    # platform-admin approval gate.
+    cafe = Cafe(name=cafe_name, is_test_account=True, status="approved")
     await db.cafes.insert_one(to_mongo(cafe))
 
-    user = User(email=email, name=name, phone=phone, cafe_id=cafe.id, role=Role.owner.value)
+    # Owner signup sets a password up front — never in the "verify by OTP" state.
+    user = User(email=email, name=name, phone=phone, cafe_id=cafe.id, role=Role.owner.value, is_email_verified=True)
     user_doc = to_mongo(user)
     user_doc["password"] = get_password_hash(password)
     await db.users.insert_one(user_doc)
@@ -147,15 +151,18 @@ async def register_verify(payload: RegisterVerify):
         await db.pending_registrations.delete_one({"email": payload.email})
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    is_test_account = pending.get("is_test_account", False)
     cafe = Cafe(
         name=pending["cafe_name"],
         gst_number=pending.get("gst_number"),
-        is_test_account=pending.get("is_test_account", False),
+        is_test_account=is_test_account,
+        # Test accounts auto-approve; a real signup waits for platform-admin approval.
+        status="approved" if is_test_account else "pending",
     )
     await db.cafes.insert_one(to_mongo(cafe))
     user = User(
         email=pending["email"], name=pending["name"], phone=pending.get("phone"),
-        cafe_id=cafe.id, role=Role.owner.value,
+        cafe_id=cafe.id, role=Role.owner.value, is_email_verified=True,
     )
     user_doc = to_mongo(user)
     user_doc["password"] = pending["password_hash"]  # already hashed at start
@@ -172,6 +179,61 @@ async def login(payload: UserLogin):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.get("is_active", True):
         raise HTTPException(status_code=403, detail="Account is deactivated.")
+    return _issue(User(**user))
+
+
+@router.post("/login-start")
+async def login_start(payload: LoginStart):
+    """Step 1 of the unified login flow: branch into OTP-first-login or password.
+
+    An unknown email gets the same {"next": "verify"} shape as a genuine
+    unverified account — it just dead-ends at /first-login with "invalid code"
+    instead of a real OTP, so this can't be used to enumerate registered emails.
+    """
+    user = await db.users.find_one({"email": payload.email})
+    if not user or not user.get("is_email_verified"):
+        resp = {"next": "verify"}
+        if user:
+            otp = await send_first_login_otp(db, user)
+            if otp:  # DEV convenience: no mailbox required locally.
+                resp["dev_otp"] = otp
+        return resp
+    return {"next": "password"}
+
+
+@router.post("/first-login", response_model=AuthResponse)
+async def first_login(payload: FirstLogin):
+    """Complete a first-time login: verify the OTP, set is_email_verified + the
+    caller's chosen password, and sign them in — one call instead of a separate
+    verify-then-set-password round trip."""
+    user = await db.users.find_one({"email": payload.email})
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired code.")
+
+    challenge = await db.action_otps.find_one({"user_id": user["id"], "purpose": FIRST_LOGIN})
+    if not challenge:
+        raise HTTPException(status_code=400, detail="Invalid or expired code.")
+    if is_expired(challenge["expires_at"]):
+        await db.action_otps.delete_one({"_id": challenge["_id"]})
+        raise HTTPException(status_code=400, detail="Code expired. Please start again.")
+    if challenge.get("attempts", 0) >= settings.otp_max_attempts:
+        await db.action_otps.delete_one({"_id": challenge["_id"]})
+        raise HTTPException(status_code=429, detail="Too many attempts. Please start again.")
+    if not verify_password(payload.otp, challenge["otp_hash"]):
+        await db.action_otps.update_one({"_id": challenge["_id"]}, {"$inc": {"attempts": 1}})
+        raise HTTPException(status_code=400, detail="Invalid verification code.")
+
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=403, detail="Account is deactivated.")
+
+    password_hash = get_password_hash(payload.password)
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"is_email_verified": True, "password": password_hash}},
+    )
+    await db.action_otps.delete_one({"_id": challenge["_id"]})
+
+    user["is_email_verified"] = True
     return _issue(User(**user))
 
 
@@ -220,18 +282,6 @@ async def reset_confirm(payload: ResetConfirm):
 async def refresh(payload: TokenRefresh):
     """Exchange a valid refresh token for a fresh access + refresh token pair."""
     data = decode_token(payload.refresh_token, expected_type="refresh")
-
-    # Device refresh tokens have no user of their own — re-mint if still paired.
-    if data.get("device_id") and not data.get("user_id"):
-        device = await db.device_activations.find_one(
-            {"device_id": data["device_id"], "status": "active"}, {"_id": 0}
-        )
-        if not device:
-            raise HTTPException(status_code=401, detail="Device is no longer authorized.")
-        return {
-            "token": create_device_token(data["device_id"], data["cafe_id"]),
-            "refresh_token": create_device_refresh_token(data["device_id"], data["cafe_id"]),
-        }
 
     user = await db.users.find_one({"id": data["user_id"]}, {"_id": 0})
     if not user or not user.get("is_active"):

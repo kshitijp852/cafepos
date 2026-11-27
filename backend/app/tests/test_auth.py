@@ -116,3 +116,35 @@ async def test_reset_request_unknown_email_is_generic(api):
     assert resp.status_code == 200
     # No reset material handed out for a non-existent account.
     assert "dev_reset_url" not in resp.json()
+
+
+async def test_pending_cafe_owner_can_login_but_is_blocked_downstream(api):
+    """A real (non-test-code) signup starts "pending" — login still succeeds so
+    the owner can see why, but every cafe-scoped action is blocked until a
+    platform_admin approves it."""
+    email = f"m_{uuid.uuid4().hex[:8]}@example.com"
+    start = await api.post("/api/auth/register/start", json={
+        "name": "Real Owner", "phone": "+919876543210", "email": email,
+        "cafe_name": "Real Cafe", "gst_number": "22AAAAA0000A1Z5",
+        "password": "password123", "confirm_password": "password123",
+    })
+    assert start.status_code == 200, start.text
+    otp = start.json()["dev_otp"]
+
+    verify = await api.post("/api/auth/register/verify", json={"email": email, "otp": otp})
+    assert verify.status_code == 200, verify.text
+    headers = {"Authorization": f"Bearer {verify.json()['token']}"}
+
+    login = await api.post("/api/auth/login", json={"email": email, "password": "password123"})
+    assert login.status_code == 200, login.text
+
+    # Self-service reads stay open so the owner can see why.
+    profile = await api.get("/api/profile", headers=headers)
+    assert profile.status_code == 200, profile.text
+    assert (await api.get("/api/cafe", headers=headers)).json()["status"] == "pending"
+
+    # Every management/owner-only action is blocked with a clear reason.
+    blocked = await api.post("/api/floors", json={"name": "Ground"}, headers=headers)
+    assert blocked.status_code == 403
+    assert "awaiting approval" in blocked.json()["detail"]
+    assert (await api.patch("/api/cafe", json={"name": "X"}, headers=headers)).status_code == 403

@@ -57,20 +57,6 @@ def generate_reset_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-_DEVICE_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
-
-def generate_device_code() -> str:
-    """A 12-char device-pairing code grouped as XXXX-XXXX-XXXX (e.g. ABFW-68JB-OPZR)."""
-    raw = "".join(secrets.choice(_DEVICE_CODE_ALPHABET) for _ in range(12))
-    return f"{raw[0:4]}-{raw[4:8]}-{raw[8:12]}"
-
-
-def normalize_device_code(code: str) -> str:
-    """Strip separators/whitespace and uppercase, for lookup + comparison."""
-    return "".join(ch for ch in (code or "") if ch.isalnum()).upper()
-
-
 def is_expired(expires_at: datetime) -> bool:
     """Compare safely: Mongo returns naive UTC datetimes, our clock is tz-aware."""
     if expires_at.tzinfo is None:
@@ -104,24 +90,6 @@ def create_access_token(user_id: str, cafe_id: str, role: str) -> str:
 def create_refresh_token(user_id: str, cafe_id: str, role: str) -> str:
     return _create_token(
         {"user_id": user_id, "cafe_id": cafe_id, "role": role},
-        timedelta(days=settings.jwt_refresh_expiry_days),
-        "refresh",
-    )
-
-
-def create_device_token(device_id: str, cafe_id: str) -> str:
-    """Access token for a paired ordering device (no user identity of its own —
-    the current waiter is resolved live from the device's activation record)."""
-    return _create_token(
-        {"device_id": device_id, "cafe_id": cafe_id, "role": "staff"},
-        timedelta(hours=settings.jwt_expiry_hours),
-        "access",
-    )
-
-
-def create_device_refresh_token(device_id: str, cafe_id: str) -> str:
-    return _create_token(
-        {"device_id": device_id, "cafe_id": cafe_id, "role": "staff"},
         timedelta(days=settings.jwt_refresh_expiry_days),
         "refresh",
     )

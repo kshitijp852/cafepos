@@ -1,7 +1,7 @@
 import { get, set } from "idb-keyval";
 
 import { api } from "@/api/client";
-import { getToken, scopeForPath } from "@/auth/storage";
+import { getToken, getUser } from "@/auth/storage";
 
 // Per-device invoice-serial series (offline-safe bill numbering).
 //
@@ -62,13 +62,14 @@ async function reserveBlock(series: string): Promise<SerialPool> {
  * connectivity (claims/reserves from the server). Safe to call opportunistically
  * while online to keep the offline buffer topped up. No-op if not signed in.
  *
- * Waiter devices never settle a bill, and the series endpoints reject device
- * sessions (app/core/deps.py::require_user_session), so skip them entirely
- * rather than firing a request that can only 403.
+ * Waiters/kitchen staff never settle a bill, and the series endpoints reject
+ * their sessions (app/core/deps.py::require_user_session), so skip them
+ * entirely rather than firing a request that can only 403.
  */
 export async function prewarmSerials(preferred?: string): Promise<void> {
   if (!getToken()) return;
-  if (scopeForPath(window.location.pathname) === "waiter") return;
+  const role = getUser()?.role;
+  if (role === "waiter" || role === "kitchen") return;
   const series = await claimSeries(preferred);
   const pool = (await get(POOL_KEY)) as SerialPool | undefined;
   if (!pool || pool.series !== series || pool.next > pool.end) {

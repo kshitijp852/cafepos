@@ -21,9 +21,12 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from app.core.security import get_password_hash
 from app.db.indexes import ensure_indexes
 from app.db.mongo import db
+from app.db.serialization import to_mongo
 from app.main import app
+from app.models.user import User
 
 
 @pytest.fixture(scope="session")
@@ -73,3 +76,32 @@ async def owner(api):
         "user_id": data["user"]["id"],
         "headers": {"Authorization": f"Bearer {data['token']}"},
     }
+
+
+@pytest_asyncio.fixture
+async def make_user(api, owner):
+    """Factory for a signed-in user of any role.
+
+    No endpoint creates a manager, a waiter with a password or a platform admin
+    yet, so the row is inserted directly and the session is obtained through the
+    real login endpoint. Members join the ``owner`` fixture's cafe unless
+    ``in_cafe=False`` (a platform admin, who belongs to no cafe).
+    """
+    async def _make(role: str, *, in_cafe: bool = True) -> dict:
+        email = f"{role}_{uuid.uuid4().hex[:8]}@example.com"
+        user = User(email=email, name=role.title(), role=role, cafe_id=owner["cafe_id"] if in_cafe else None)
+        doc = to_mongo(user)
+        doc["password"] = get_password_hash("password123")
+        await db.users.insert_one(doc)
+
+        resp = await api.post("/api/auth/login", json={"email": email, "password": "password123"})
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        return {
+            "email": email,
+            "user_id": user.id,
+            "cafe_id": user.cafe_id,
+            "headers": {"Authorization": f"Bearer {data['token']}"},
+        }
+
+    return _make

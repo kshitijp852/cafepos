@@ -11,13 +11,9 @@ logger = logging.getLogger("cafepos")
 
 _INDEXES = [
     ("users", [("email", ASCENDING)], {"unique": True}),
-    # Staff log in by username. Partial (string-only) so the many manager rows
-    # that store username=null don't collide on a unique index.
-    ("users", [("username", ASCENDING)], {
-        "unique": True,
-        "partialFilterExpression": {"username": {"$type": "string"}},
-    }),
     ("users", [("cafe_id", ASCENDING), ("role", ASCENDING)], {}),
+    # Platform-admin pending-cafe-list query.
+    ("cafes", [("status", ASCENDING)], {}),
     # Unique per (cafe, series, serial): each device series is its own consecutive
     # invoice line, so C-1 and B2-1 coexist while duplicates within a series can't.
     ("bills", [("cafe_id", ASCENDING), ("series", ASCENDING), ("bill_number", ASCENDING)], {"unique": True}),
@@ -27,16 +23,13 @@ _INDEXES = [
     ("orders", [("cafe_id", ASCENDING), ("status", ASCENDING)], {}),
     ("categories", [("cafe_id", ASCENDING)], {}),
     ("menu_items", [("cafe_id", ASCENDING), ("category_id", ASCENDING)], {}),
+    ("price_change_requests", [("cafe_id", ASCENDING), ("status", ASCENDING)], {}),
     ("floors", [("cafe_id", ASCENDING)], {}),
     ("tables", [("cafe_id", ASCENDING)], {}),
     ("reservations", [("cafe_id", ASCENDING), ("reservation_date", ASCENDING)], {}),
     ("day_sessions", [("cafe_id", ASCENDING), ("session_date", ASCENDING)], {}),
     ("inventory", [("cafe_id", ASCENDING)], {}),
     ("device_sessions", [("device_id", ASCENDING)], {}),
-    # Waiter device-authorization records.
-    ("device_activations", [("user_id", ASCENDING), ("device_id", ASCENDING)], {"unique": True}),
-    ("device_activations", [("code", ASCENDING)], {}),
-    ("device_activations", [("expires_at", ASCENDING)], {"expireAfterSeconds": 0}),
     # Signup/reset ephemeral records. TTL indexes (expireAfterSeconds=0) let
     # Mongo auto-purge expired docs — requires expires_at stored as a BSON date.
     ("pending_registrations", [("email", ASCENDING)], {"unique": True}),
@@ -51,6 +44,7 @@ _INDEXES = [
 
 async def ensure_indexes(db) -> None:
     await _migrate_bill_series(db)
+    await _drop_device_activations(db)
     for collection, keys, opts in _INDEXES:
         try:
             await db[collection].create_index(keys, **opts)
@@ -73,3 +67,14 @@ async def _migrate_bill_series(db) -> None:
         await db.bills.drop_index("cafe_id_1_bill_number_1")
     except Exception:  # index may not exist (fresh db) — fine
         pass
+
+
+async def _drop_device_activations(db) -> None:
+    """Device pairing is gone (Slice 6) — drop the collection it lived in.
+
+    No real data depends on it; this is a no-op once it's already gone.
+    """
+    try:
+        await db.device_activations.drop()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Could not drop device_activations: %s", exc)

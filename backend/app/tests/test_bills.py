@@ -21,6 +21,25 @@ async def test_bill_defaults_to_cafe_tax_rate(api, owner):
     assert bill["bill_hash"]
 
 
+async def test_settling_a_bill_completes_its_order(api, owner):
+    """completed is only ever reached by creating a bill (Slice 7) — confirm
+    that path still works for an order sitting anywhere short of it."""
+    items = [{"menu_item_id": "m1", "menu_item_name": "Latte", "quantity": 1, "price": 100}]
+    order = await api.post("/api/orders", json={"items": items, "status": "active"}, headers=owner["headers"])
+    oid = order.json()["id"]
+    await api.put(f"/api/orders/{oid}/status", json={"status": "preparing"}, headers=owner["headers"])
+    await api.put(f"/api/orders/{oid}/status", json={"status": "ready"}, headers=owner["headers"])
+    await api.put(f"/api/orders/{oid}/status", json={"status": "served"}, headers=owner["headers"])
+
+    bill = await api.post(
+        "/api/bills", json={"items": items, "payment_method": "cash", "order_id": oid}, headers=owner["headers"]
+    )
+    assert bill.status_code == 200, bill.text
+
+    completed = await api.get("/api/orders", params={"status": "completed"}, headers=owner["headers"])
+    assert any(o["id"] == oid for o in completed.json())
+
+
 async def test_bill_normalizes_customer_phone(api, owner):
     resp = await api.post(
         "/api/bills",

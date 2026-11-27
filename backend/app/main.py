@@ -10,6 +10,7 @@ from app.core.exceptions import register_exception_handlers
 from app.db.indexes import ensure_indexes
 from app.db.mongo import client, db
 from app.routers import (
+    admin,
     auth,
     bills,
     cafe,
@@ -24,8 +25,8 @@ from app.routers import (
     reports,
     reservations,
     sessions,
+    staff,
     tables,
-    waiters,
 )
 
 logging.basicConfig(
@@ -61,6 +62,6 @@ app.add_middleware(
 register_exception_handlers(app)
 
 api_router = APIRouter(prefix="/api")
-for module in (health, auth, cafe, profile, pincode, waiters, menu, tables, orders, bills, reservations, sessions, reports, inventory, printer, reconciliation):
+for module in (health, auth, admin, cafe, profile, pincode, staff, menu, tables, orders, bills, reservations, sessions, reports, inventory, printer, reconciliation):
     api_router.include_router(module.router)
 app.include_router(api_router)

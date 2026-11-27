@@ -11,8 +11,8 @@ import {
 import { toast } from "@/components/ui/sonner";
 
 import { errorMessage } from "@/api/client";
-import { transferTable, updateTable, waiterLogout } from "@/api/endpoints";
-import { useActiveOrders, useDevice, useFloors, useInvalidate, useTables } from "@/api/queries";
+import { transferTable, updateTable } from "@/api/endpoints";
+import { useActiveOrders, useFloors, useInvalidate, useTables } from "@/api/queries";
 import { useAuth } from "@/auth/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,14 +32,12 @@ const STATUS_STYLE: Record<TableStatus, string> = {
 };
 
 export function WaiterTablesPage() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const invalidate = useInvalidate();
   const { data: tables = [], isLoading, isError, refetch, isFetching } = useTables();
   const { data: floors = [] } = useFloors();
-  const { data: device } = useDevice();
   const { orders } = useActiveOrders();
-  const assigned = device?.assigned_user?.name;
   const [query, setQuery] = useState("");
   const [actionsFor, setActionsFor] = useState<Table | null>(null);
   const groups = searchFloors(floors, tables, query);
@@ -50,30 +48,22 @@ export function WaiterTablesPage() {
 
   const openTable = (table: Table) => navigate(`/waiter/order/${table.id}`, { state: { table } });
 
-  const handleLogout = async () => {
-    // Tell the backend so the manager panel shows this device as logged out.
-    // Best-effort: sign out locally regardless of the network call.
-    const deviceId = localStorage.getItem("waiter_device_id");
-    if (deviceId) await waiterLogout(deviceId).catch(() => {});
+  const handleLogout = () => {
     logout();
-    navigate("/waiter", { replace: true });
+    navigate("/login", { replace: true });
   };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="flex h-16 items-center justify-between gap-3 border-b border-border bg-card px-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <h1 className="truncate font-heading text-xl font-bold">{device?.device_name || "Café POS"}</h1>
+          <h1 className="truncate font-heading text-xl font-bold">Café POS</h1>
           <Badge variant="outline" className="hidden sm:inline-flex">Waiter</Badge>
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
           <OfflineStatus />
           <span className="hidden text-sm lg:block">
-            {assigned ? (
-              <>Waiter: <span className="font-medium">{assigned}</span></>
-            ) : (
-              <span className="text-muted-foreground">No waiter assigned</span>
-            )}
+            Signed in: <span className="font-medium">{user?.name}</span>
           </span>
           <Button variant="outline" size="sm" onClick={handleLogout}>
             <SignOut size={16} />

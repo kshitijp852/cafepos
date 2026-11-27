@@ -9,7 +9,6 @@ import type {
   FoodType,
   DailyReport,
   DaySession,
-  DeviceActivation,
   Floor,
   InventoryItem,
   MenuItem,
@@ -48,6 +47,17 @@ export const registerVerify = (d: { email: string; otp: string }) =>
 
 export const loginUser = (d: { email: string; password: string }) =>
   api.post<AuthResponse>("/auth/login", d).then((r) => r.data);
+
+// Unified login step 1: branch into the OTP first-login path or the normal
+// password path. `dev_otp` is only present when the backend has no SMTP
+// configured (local dev).
+export const loginStart = (email: string) =>
+  api.post<{ next: "password" | "verify"; dev_otp?: string }>("/auth/login-start", { email }).then((r) => r.data);
+
+// Unified login step 2 (first-time sign-in only): verify the OTP, set the
+// password, and receive the authenticated session in one call.
+export const firstLogin = (d: { email: string; otp: string; password: string; confirm_password: string }) =>
+  api.post<AuthResponse>("/auth/first-login", d).then((r) => r.data);
 
 // Password reset — request a link, then confirm with the emailed token.
 export const requestPasswordReset = (email: string) =>
@@ -387,38 +397,6 @@ export const getWaiters = () => api.get<User[]>("/waiters").then((r) => r.data);
 export const createWaiter = (d: { name: string; username?: string }) =>
   api.post<User>("/waiters", d).then((r) => r.data);
 
-// ---- Devices (device-code pairing; manager assigns the current waiter) ----
-export type AssignedUser = { id: string; name: string; username?: string } | null;
-export type DeviceInfo = { device_id: string; device_name?: string | null; assigned_user: AssignedUser };
-
-// Device poll: pending until a manager activates it, then a device token pair.
-export type DevicePollResult =
-  | { status: "pending" }
-  | { status: "active"; token: string; refresh_token: string; device: DeviceInfo };
-export const requestDeviceCode = (device_id: string) =>
-  api.post<{ code: string; expires_at: string }>("/waiters/devices/request", { device_id }).then((r) => r.data);
-export const pollDeviceCode = (d: { device_id: string; code: string }) =>
-  api.post<DevicePollResult>("/waiters/devices/poll", d).then((r) => r.data);
-
-// Waiter app: the device's own name + currently assigned waiter (polled live).
-export const getDeviceMe = () => api.get<DeviceInfo>("/devices/me").then((r) => r.data);
-
-export const waiterLogout = (device_id: string) =>
-  api.post("/waiters/devices/logout", { device_id }).then((r) => r.data);
-
-// Manager: authorize a pending device by code (optionally name it + assign a waiter).
-export const activateWaiterDevice = (d: { code: string; waiter_id?: string; device_name?: string }) =>
-  api.post<{ success: boolean; message: string }>("/waiters/devices/activate", d).then((r) => r.data);
-
-// Manager: set/clear the current waiter on a device and/or rename it.
-export const assignDevice = (activationId: string, d: { user_id?: string | null; device_name?: string }) =>
-  api.patch<DeviceActivation>(`/waiters/devices/${activationId}`, d).then((r) => r.data);
-
-export const getWaiterDevices = () =>
-  api.get<DeviceActivation[]>("/waiters/devices").then((r) => r.data);
-export const revokeWaiterDevice = (id: string) =>
-  api.delete(`/waiters/devices/${id}`).then((r) => r.data);
-
 export type WaiterStats = {
   staff: User;
   orders_taken: number;
@@ -441,7 +419,7 @@ export type WaiterStats = {
   last_active: string | null;
 };
 export const getWaiterStats = (id: string) =>
-  api.get<WaiterStats>(`/waiters/${id}/stats`).then((r) => r.data);
+  api.get<WaiterStats>(`/staff/${id}/stats`).then((r) => r.data);
 
 export const updateWaiter = (id: string, d: { name?: string; username?: string }) =>
   api.patch<User>(`/waiters/${id}`, d).then((r) => r.data);

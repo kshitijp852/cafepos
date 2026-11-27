@@ -3,7 +3,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 
-import { clearAuth, getRefreshToken, getToken, scopeForPath, setTokens } from "@/auth/storage";
+import { clearAuth, getRefreshToken, getToken, setTokens } from "@/auth/storage";
 
 // Backend origin is resolved at runtime, not baked in at build time: a
 // localStorage override (set on the device, e.g. from Settings) wins over the
@@ -87,10 +87,9 @@ api.interceptors.response.use(
         original.headers.Authorization = `Bearer ${newToken}`;
         return api(original);
       }
-      // Refresh failed — force re-login into the correct app (waiter vs manager).
+      // Refresh failed — force re-login.
       clearAuth();
-      const loginPath = scopeForPath(window.location.pathname) === "waiter" ? "/waiter" : "/login";
-      if (window.location.pathname !== loginPath) window.location.assign(loginPath);
+      if (window.location.pathname !== "/login") window.location.assign("/login");
     }
     return Promise.reject(error);
   },

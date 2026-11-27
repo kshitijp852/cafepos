@@ -15,8 +15,6 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { inr, timeAgo } from "@/lib/format";
 
-const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-
 export function StaffDetailPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
@@ -28,21 +26,17 @@ export function StaffDetailPage() {
     enabled: !!id,
   });
 
-  const [edit, setEdit] = useState<{ name: string; username: string } | null>(null);
+  const [edit, setEdit] = useState<{ name: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const openEdit = () => data && setEdit({ name: data.staff.name, username: data.staff.username ?? "" });
+  const openEdit = () => data && setEdit({ name: data.staff.name });
 
   const saveEdit = async () => {
     if (!edit) return;
     if (!edit.name.trim()) return toast.error("Enter a name.");
-    if (!edit.username.trim()) return toast.error("Enter a username.");
     setSaving(true);
     try {
-      await updateWaiter(id, {
-        name: edit.name.trim(),
-        username: edit.username.trim(),
-      });
+      await updateWaiter(id, { name: edit.name.trim() });
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["waiterStats", id] }),
         qc.invalidateQueries({ queryKey: ["waiters"] }),
@@ -78,10 +72,9 @@ export function StaffDetailPage() {
         </Button>
         <div>
           <h1 className="font-heading text-2xl font-bold">{data.staff.name}</h1>
-          <p className="text-sm text-muted-foreground">
-            <span className="font-mono">@{data.staff.username}</span>
-            {data.last_active ? ` · last active ${timeAgo(data.last_active)}` : ""}
-          </p>
+          {data.last_active && (
+            <p className="text-sm text-muted-foreground">last active {timeAgo(data.last_active)}</p>
+          )}
         </div>
         <div className="ml-auto flex items-center gap-3">
           <Badge variant={data.staff.is_active === false ? "outline" : "success"}>
@@ -185,14 +178,6 @@ export function StaffDetailPage() {
               <div className="space-y-1">
                 <Label>Name</Label>
                 <Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
-              </div>
-              <div className="space-y-1">
-                <Label>Username</Label>
-                <Input
-                  autoCapitalize="none"
-                  value={edit.username}
-                  onChange={(e) => setEdit({ ...edit, username: slugify(e.target.value) })}
-                />
               </div>
             </div>
           )}

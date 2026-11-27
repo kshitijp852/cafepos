@@ -1,12 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.deps import get_current_user, require_role
+from app.core.deps import OWNER_ONLY, get_current_user
 from app.db.mongo import db
 from app.models.cafe import Cafe, CafeSettingsUpdate
-from app.models.common import Role
 
 router = APIRouter(tags=["cafe"])
-_MANAGER = require_role([Role.owner.value, Role.superadmin.value])
 
 
 @router.get("/cafe", response_model=Cafe)
@@ -19,8 +17,8 @@ async def get_cafe(current_user: dict = Depends(get_current_user)):
 
 
 @router.patch("/cafe", response_model=Cafe)
-async def update_cafe(payload: CafeSettingsUpdate, current_user: dict = Depends(_MANAGER)):
-    """Manager edits cafe name, tax split (CGST/SGST), and packing/delivery charges.
+async def update_cafe(payload: CafeSettingsUpdate, current_user: dict = Depends(OWNER_ONLY)):
+    """Owner edits cafe name, tax split (CGST/SGST), and packing/delivery charges.
     tax_percentage is kept as CGST+SGST so order/bill math stays consistent."""
     cafe_id = current_user["cafe_id"]
     cafe = await db.cafes.find_one({"id": cafe_id}, {"_id": 0})

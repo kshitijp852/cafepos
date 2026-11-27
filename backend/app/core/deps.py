@@ -5,6 +5,7 @@ from fastapi import Depends, Header, HTTPException
 
 from app.core.security import decode_token
 from app.db.mongo import db
+from app.models.common import Role
 
 
 async def get_current_user(authorization: str = Header(None)) -> dict:
@@ -20,52 +21,56 @@ async def get_current_user(authorization: str = Header(None)) -> dict:
 
     payload = decode_token(parts[1], expected_type="access")
 
-    # Device tokens carry a device_id and no user identity of their own. Resolve
-    # the current assignment live, so reassigning the device takes effect at once.
-    if payload.get("device_id") and not payload.get("user_id"):
-        device = await db.device_activations.find_one(
-            {"device_id": payload["device_id"], "status": "active"}, {"_id": 0}
-        )
-        if not device:
-            raise HTTPException(status_code=401, detail="Device is no longer authorized.")
-        return {
-            "cafe_id": device["cafe_id"],
-            "role": "staff",
-            "device_id": device["device_id"],
-            "user_id": device.get("user_id"),
-        }
-
     user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0})
     if not user or not user.get("is_active"):
         raise HTTPException(status_code=401, detail="User not found or deactivated.")
+
+    # Stamp the cafe's live approval status so require_approved_cafe (and anything
+    # that wants to explain itself to a pending cafe's owner) doesn't need its own
+    # lookup. None for platform_admin, who belongs to no cafe.
+    cafe_status = None
+    if payload.get("cafe_id"):
+        cafe = await db.cafes.find_one({"id": payload["cafe_id"]}, {"_id": 0, "status": 1})
+        cafe_status = cafe.get("status") if cafe else None
+    payload["cafe_status"] = cafe_status
     return payload
 
 
 async def require_user_session(current_user: dict = Depends(get_current_user)) -> dict:
-    """Reject waiter-device sessions; allow real signed-in users.
+    """Alias for get_current_user, kept for its existing call sites.
 
-    A device token is issued to a tablet on the floor, not to a person: it is
-    long-lived, its holder is whoever is carrying the device, and a manager
-    reassigns who it belongs to without the device re-authenticating. That is the
-    right trade for taking orders and wrong for anything else, so money,
-    reporting, and destructive actions require a user session.
-
-    Role checks (``require_role``) are a separate axis and still apply — this
-    only answers "is a person behind this request".
+    Device-paired sessions (which this used to filter out) no longer exist as
+    of Slice 6 — every session now resolves to a real signed-in user, so this
+    is a plain passthrough. Role checks (``require_role``) are unaffected.
     """
-    if current_user.get("device_id"):
-        raise HTTPException(
-            status_code=403,
-            detail="This action isn't available on a waiter device.",
-        )
     return current_user
 
 
-def require_role(allowed_roles: Sequence[str]):
-    """Dependency factory enforcing that the caller's role is allowed."""
-    allowed = list(allowed_roles)
+async def require_approved_cafe(current_user: dict = Depends(get_current_user)) -> dict:
+    """Block every cafe-scoped action until the cafe is approved.
 
-    async def role_checker(current_user: dict = Depends(get_current_user)) -> dict:
+    A pending cafe's owner can still log in and read /profile or GET /cafe to
+    see *why* they're blocked — this dependency is only wired into the tiers
+    below, not into those read-only self-service endpoints. platform_admin
+    belongs to no cafe and is exempt.
+    """
+    if current_user["role"] == Role.platform_admin.value:
+        return current_user
+    if current_user.get("cafe_status") != "approved":
+        raise HTTPException(status_code=403, detail="Your cafe is awaiting approval.")
+    return current_user
+
+
+def require_role(allowed_roles: Sequence[str], *, gate_approval: bool = False):
+    """Dependency factory enforcing that the caller's role is allowed.
+
+    gate_approval=True additionally requires the caller's cafe to be approved
+    (see require_approved_cafe) — set on the cafe-scoped management tiers below.
+    """
+    allowed = list(allowed_roles)
+    dependency = require_approved_cafe if gate_approval else get_current_user
+
+    async def role_checker(current_user: dict = Depends(dependency)) -> dict:
         if current_user["role"] not in allowed:
             raise HTTPException(
                 status_code=403,
@@ -74,3 +79,14 @@ def require_role(allowed_roles: Sequence[str]):
         return current_user
 
     return role_checker
+
+
+# The permission tiers every cafe-scoped router builds on. Defined once so
+# anything that must apply to "all management endpoints" (the cafe-approval
+# gate, here) has a single place to hook in.
+#   OWNER_ONLY       — business settings and anything a manager must not touch.
+#   MANAGEMENT       — day-to-day running of the cafe: owner and manager.
+#   PLATFORM_ADMIN   — the platform-operator tier; no cafe, so never approval-gated.
+OWNER_ONLY = require_role([Role.owner.value], gate_approval=True)
+MANAGEMENT = require_role([Role.owner.value, Role.manager.value], gate_approval=True)
+PLATFORM_ADMIN = require_role([Role.platform_admin.value])

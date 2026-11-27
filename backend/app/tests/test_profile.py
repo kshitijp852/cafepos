@@ -3,6 +3,7 @@ import uuid
 import pytest
 
 from app.core.config import get_settings
+from app.db.mongo import db
 
 GST = "22AAAAA0000A1Z5"
 
@@ -129,6 +130,9 @@ async def test_real_cafe_cannot_clear_gst(api):
         "/api/auth/register/verify", json={"email": body["email"], "otp": start.json()["dev_otp"]}
     )
     headers = {"Authorization": f"Bearer {verify.json()['token']}"}
+    # A real signup starts "pending" (Slice 3); approve it so this test can
+    # reach the GST rule it's actually exercising rather than the approval gate.
+    await db.cafes.update_one({"id": verify.json()["user"]["cafe_id"]}, {"$set": {"status": "approved"}})
 
     cleared = await api.patch("/api/cafe", headers=headers, json={"gst_number": ""})
     assert cleared.status_code == 400

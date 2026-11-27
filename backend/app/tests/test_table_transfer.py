@@ -1,13 +1,15 @@
-"""Moving a sitting between tables, and what a floor device may change."""
+"""Moving a sitting between tables, and what a waiter session may change."""
 import pytest
 
-from .test_waiters import _pair_device
+from .test_staff import _invite, _login_as
 
 
 @pytest.fixture
 async def device(api, owner):
-    poll = await _pair_device(api, owner, device_id="dev-tables")
-    return {"Authorization": f"Bearer {poll['token']}"}
+    """A waiter's own signed-in session — named `device` to keep this file's
+    diff small; it plays the role the paired tablet used to."""
+    invited = await _invite(api, owner["headers"], role="waiter", name="Floor Waiter")
+    return (await _login_as(api, invited))["headers"]
 
 
 async def _floor_with_tables(api, owner, count=2):

@@ -1,20 +1,21 @@
-"""What a paired waiter device may and may not reach.
+"""What a waiter/kitchen session may and may not reach.
 
-A device token is issued to a tablet, not a person: it is long-lived and the
-manager reassigns who is carrying it without the device re-authenticating. It is
-scoped to taking orders. Money, reporting, and destructive actions need a real
-signed-in user (app/core/deps.py::require_user_session).
+Before Slice 6 this scope was keyed on "is this a paired device"; now it's keyed
+on role (waiter/kitchen vs owner/manager) since device-pairing is gone and a
+waiter logs in as themselves. Money, reporting, and destructive actions need
+a management role (app/core/deps.py::MANAGEMENT / OWNER_ONLY).
 """
 import pytest
 
-from .test_waiters import _pair_device
+from .test_staff import _invite, _login_as
 
 
 @pytest.fixture
 async def device(api, owner):
-    """A paired device's auth headers."""
-    poll = await _pair_device(api, owner, device_id="dev-scope")
-    return {"Authorization": f"Bearer {poll['token']}"}
+    """A waiter's own signed-in session — named `device` to keep this file's
+    diff small; it plays the role the paired tablet used to."""
+    invited = await _invite(api, owner["headers"], role="waiter", name="Floor Waiter")
+    return (await _login_as(api, invited))["headers"]
 
 
 async def _menu_item(api, owner):
@@ -32,14 +33,14 @@ async def _menu_item(api, owner):
 @pytest.mark.parametrize(
     "path",
     ["/api/menu/items", "/api/menu/categories", "/api/tables", "/api/floors",
-     "/api/orders", "/api/cafe", "/api/devices/me", "/api/reservations"],
+     "/api/orders", "/api/cafe", "/api/reservations"],
 )
-async def test_device_can_read_floor_data(api, device, path):
+async def test_waiter_can_read_floor_data(api, device, path):
     resp = await api.get(path, headers=device)
     assert resp.status_code == 200, f"{path} -> {resp.status_code} {resp.text}"
 
 
-async def test_device_can_take_and_advance_an_order(api, owner, device):
+async def test_waiter_can_take_and_advance_an_order(api, owner, device):
     item = await _menu_item(api, owner)
     items = [{
         "menu_item_id": item["id"], "menu_item_name": item["name"],
@@ -62,8 +63,8 @@ async def test_device_can_take_and_advance_an_order(api, owner, device):
 
 # ---- Denied: money, reporting, destructive ----
 
-async def test_device_cannot_settle_a_bill(api, owner, device):
-    """Settling is a manager action — a floor tablet must not take payment."""
+async def test_waiter_cannot_settle_a_bill(api, owner, device):
+    """Settling is a manager action — a waiter must not take payment."""
     item = await _menu_item(api, owner)
     resp = await api.post(
         "/api/bills",
@@ -79,7 +80,7 @@ async def test_device_cannot_settle_a_bill(api, owner, device):
     assert resp.status_code == 403, resp.text
 
 
-async def test_device_cannot_cancel_an_order(api, owner, device):
+async def test_waiter_cannot_cancel_an_order(api, owner, device):
     item = await _menu_item(api, owner)
     created = await api.post(
         "/api/orders",
@@ -98,22 +99,22 @@ async def test_device_cannot_cancel_an_order(api, owner, device):
     ["/api/bills", "/api/reports/daily", "/api/reports/analytics",
      "/api/inventory", "/api/sessions/current", "/api/sessions/history"],
 )
-async def test_device_cannot_read_money_or_reports(api, device, path):
+async def test_waiter_cannot_read_money_or_reports(api, device, path):
     resp = await api.get(path, headers=device)
     assert resp.status_code == 403, f"{path} -> {resp.status_code} {resp.text}"
 
 
-async def test_device_cannot_open_or_close_the_day(api, device):
+async def test_waiter_cannot_open_or_close_the_day(api, device):
     assert (await api.post("/api/sessions/open", json={"opening_cash": 500}, headers=device)).status_code == 403
 
 
-async def test_device_cannot_claim_invoice_serials(api, device):
-    """Offline invoice serials belong to a billing device, not a waiter tablet."""
+async def test_waiter_cannot_claim_invoice_serials(api, device):
+    """Offline invoice serials belong to a billing device, not a waiter."""
     resp = await api.post("/api/bills/series/claim", json={}, headers=device)
     assert resp.status_code == 403, resp.text
 
 
-async def test_device_cannot_write_reservations(api, owner, device):
+async def test_waiter_cannot_write_reservations(api, owner, device):
     """Reads stay open — a waiter needs to see who a reserved table is held for."""
     assert (await api.get("/api/reservations", headers=device)).status_code == 200
     resp = await api.post(

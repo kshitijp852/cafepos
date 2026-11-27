@@ -3,10 +3,10 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.deps import get_current_user, require_user_session
+from app.core.deps import MANAGEMENT, get_current_user
 from app.db.mongo import db
 from app.db.serialization import to_mongo
-from app.models.common import OrderStatus, TableStatus, new_id
+from app.models.common import OrderStatus, Role, TableStatus, new_id
 from app.models.order import Order, OrderCreate, OrderStatusUpdate, OrderUpdate
 from app.services.cafe import get_tax_percentage
 from app.services.orders import can_transition, is_terminal
@@ -42,11 +42,13 @@ async def create_order(payload: OrderCreate, current_user: dict = Depends(get_cu
     tax = subtotal * tax_pct / 100
     total = subtotal + tax
 
-    # A device session attributes orders to whoever the manager has assigned to it
-    # (or no one — ordering-only). Manager sessions use the client-supplied waiter.
-    if current_user.get("device_id"):
-        waiter_id = current_user.get("user_id")
-        waiter = await db.users.find_one({"id": waiter_id}, {"_id": 0, "name": 1}) if waiter_id else None
+    # A waiter/kitchen session IS the attribution — their own login is the only
+    # source of truth for their own orders, never a client-supplied waiter_id.
+    # An owner/manager placing a counter order on someone's behalf still uses
+    # the explicit waiter_id/waiter_name fields.
+    if current_user["role"] in (Role.waiter.value, Role.kitchen.value):
+        waiter_id = current_user["user_id"]
+        waiter = await db.users.find_one({"id": waiter_id}, {"_id": 0, "name": 1})
         waiter_name = waiter["name"] if waiter else None
     else:
         waiter_id = payload.waiter_id
@@ -122,6 +124,11 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate, current
         raise HTTPException(status_code=403, detail="You do not have access to this order.")
 
     target = payload.status.value
+    if target == OrderStatus.completed.value:
+        raise HTTPException(
+            status_code=400,
+            detail="Orders are completed by creating a bill, not by setting status directly.",
+        )
     if not can_transition(order["status"], target):
         raise HTTPException(
             status_code=400,
@@ -141,7 +148,7 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate, current
 
 
 @router.delete("/{order_id}")
-async def cancel_order(order_id: str, current_user: dict = Depends(require_user_session)):
+async def cancel_order(order_id: str, current_user: dict = Depends(MANAGEMENT)):
     order = await db.orders.find_one({"id": order_id})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found.")

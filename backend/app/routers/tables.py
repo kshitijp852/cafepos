@@ -4,7 +4,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 
-from app.core.deps import get_current_user, require_role
+from app.core.deps import MANAGEMENT, get_current_user
 from app.db.mongo import db
 from app.db.serialization import to_mongo
 from app.models.common import Role, TableStatus
@@ -19,7 +19,6 @@ from app.models.table import (
 )
 
 router = APIRouter(tags=["tables"])
-_MANAGER = require_role([Role.owner.value, Role.superadmin.value])
 
 
 def _slug(text: str) -> str:
@@ -39,7 +38,7 @@ async def get_floors(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/floors", response_model=Floor)
-async def create_floor(payload: FloorCreate, current_user: dict = Depends(_MANAGER)):
+async def create_floor(payload: FloorCreate, current_user: dict = Depends(MANAGEMENT)):
     floor = Floor(name=payload.name, cafe_id=current_user["cafe_id"])
     await db.floors.insert_one(to_mongo(floor))
     return floor
@@ -51,7 +50,7 @@ async def get_tables(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/tables", response_model=Table)
-async def create_table(payload: TableCreate, current_user: dict = Depends(_MANAGER)):
+async def create_table(payload: TableCreate, current_user: dict = Depends(MANAGEMENT)):
     cafe_id = current_user["cafe_id"]
     floor = await db.floors.find_one({"id": payload.floor_id, "cafe_id": cafe_id})
     if not floor:
@@ -71,7 +70,7 @@ async def create_table(payload: TableCreate, current_user: dict = Depends(_MANAG
 
 
 @router.post("/tables/bulk", response_model=List[Table])
-async def create_tables_bulk(payload: TableBulkCreate, current_user: dict = Depends(_MANAGER)):
+async def create_tables_bulk(payload: TableBulkCreate, current_user: dict = Depends(MANAGEMENT)):
     """Create many tables at once (prefix + running number). Existing tables on the
     same floor are skipped so re-running is safe. The same prefix can be reused on
     other floors — dedup is floor-scoped via the floorname+name code."""
@@ -109,14 +108,15 @@ async def update_table(table_id: str, payload: TableUpdate, current_user: dict =
         raise HTTPException(status_code=403, detail="You do not have access to this table.")
     updates = payload.model_dump(exclude_unset=True)
 
-    # A floor device may seat and free tables, nothing structural: renaming a
-    # table or moving it between floors is a layout decision, not a service one.
-    if current_user.get("device_id"):
+    # A waiter/kitchen session may seat and free tables, nothing structural:
+    # renaming a table or moving it between floors is a layout decision, not a
+    # service one — the same limited authority a paired tablet used to have.
+    if current_user["role"] in (Role.waiter.value, Role.kitchen.value):
         structural = set(updates) - {"status", "current_order_id"}
         if structural:
             raise HTTPException(
                 status_code=403,
-                detail=f"A waiter device cannot change {', '.join(sorted(structural))}.",
+                detail=f"A waiter cannot change {', '.join(sorted(structural))}.",
             )
 
     # Rename or floor move changes the floorname+name code — recompute and guard uniqueness.
@@ -194,7 +194,7 @@ async def transfer_table(
 
 
 @router.delete("/tables/{table_id}")
-async def delete_table(table_id: str, current_user: dict = Depends(_MANAGER)):
+async def delete_table(table_id: str, current_user: dict = Depends(MANAGEMENT)):
     existing = await db.tables.find_one({"id": table_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Table not found.")

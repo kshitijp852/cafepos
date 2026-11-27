@@ -19,7 +19,7 @@ import { CustomersPage } from "@/routes/CustomersPage";
 import { InventoryPage } from "@/routes/InventoryPage";
 import { SettingsPage } from "@/routes/SettingsPage";
 import { ProfilePage } from "@/routes/ProfilePage";
-import { WaiterAuthPage } from "@/routes/waiter/WaiterAuthPage";
+import { AdminPlaceholderPage } from "@/routes/admin/AdminPlaceholderPage";
 import { WaiterTablesPage } from "@/routes/waiter/WaiterTablesPage";
 import { WaiterOrderPage } from "@/routes/waiter/WaiterOrderPage";
 import { WaiterKitchenPage } from "@/routes/waiter/WaiterKitchenPage";
@@ -29,12 +29,19 @@ import { WaiterKitchenPage } from "@/routes/waiter/WaiterKitchenPage";
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage />, errorElement: <ErrorPage /> },
   { path: "/reset", element: <ResetPasswordPage />, errorElement: <ErrorPage /> },
-  { path: "/waiter", element: <WaiterAuthPage />, errorElement: <ErrorPage /> },
 
-  // Waiter app — device sessions only. A manager who navigates here client-side
-  // still holds a manager-scoped token, which the waiter API calls can't use.
+  // Platform-admin app — placeholder landing until Slice 5 builds the real
+  // cafe-approval dashboard.
   {
-    element: <RequireAuth allowedRoles={["staff"]} />,
+    element: <RequireAuth allowedRoles={["platform_admin"]} />,
+    errorElement: <ErrorPage />,
+    children: [{ path: "/admin", element: <AdminPlaceholderPage /> }],
+  },
+
+  // Waiter app — a waiter/kitchen staff member's own login, same session as
+  // everyone else, routed here by role.
+  {
+    element: <RequireAuth allowedRoles={["waiter", "kitchen"]} />,
     errorElement: <ErrorPage />,
     children: [
       { path: "/waiter/tables", element: <WaiterTablesPage /> },
@@ -48,7 +55,7 @@ export const router = createBrowserRouter([
 
   // Manager app.
   {
-    element: <RequireAuth allowedRoles={["owner", "superadmin"]} redirectStaffToWaiter />,
+    element: <RequireAuth allowedRoles={["owner", "manager"]} />,
     errorElement: <ErrorPage />,
     children: [
       // Ordering is full-screen (its own header, no app chrome) — a focused task.

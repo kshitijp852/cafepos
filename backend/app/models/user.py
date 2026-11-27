@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
@@ -22,13 +22,11 @@ class User(DBModel):
     id: str = Field(default_factory=new_id)
     email: str
     name: str
-    username: Optional[str] = None  # staff log in with this; managers use email
     phone: Optional[str] = None
-    role: str = Role.owner.value  # superadmin, owner, staff
-    cafe_id: str
-    pin: Optional[str] = None  # bcrypt-hashed 4-digit PIN for staff
+    role: str = Role.owner.value  # platform_admin, owner, manager, waiter, kitchen
+    cafe_id: Optional[str] = None  # None only for platform_admin
+    is_email_verified: bool = False
     is_active: bool = True
-    device_token: Optional[str] = None
     last_active: Optional[datetime] = None
     created_by: Optional[str] = None
     created_at: datetime = Field(default_factory=utcnow)
@@ -128,6 +126,25 @@ class UserLogin(BaseModel):
     password: str
 
 
+class LoginStart(BaseModel):
+    """Step 1 of the unified login flow: branch into OTP-first-login or password."""
+    email: EmailStr
+
+
+class FirstLogin(BaseModel):
+    """Step 2 for a user who has never signed in: confirm the OTP and set a password."""
+    email: EmailStr
+    otp: str = Field(min_length=6, max_length=6)
+    password: str = Field(min_length=6)
+    confirm_password: str
+
+    @model_validator(mode="after")
+    def _passwords_match(self):
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match.")
+        return self
+
+
 class TokenRefresh(BaseModel):
     refresh_token: str
 
@@ -138,67 +155,15 @@ class AuthResponse(BaseModel):
     refresh_token: str
 
 
-class WaiterCreate(BaseModel):
-    """Manager adds a staff member to the roster (a name for attribution).
-    No login credentials — staff never sign in; devices do."""
+class StaffInvite(BaseModel):
+    """Owner/manager invites a new staff member — one endpoint for every role.
+    An owner may invite any of the three; a manager may not invite another
+    manager (enforced at the call site, not here)."""
     name: str = Field(min_length=1)
-    username: Optional[str] = None
+    email: EmailStr
+    role: Literal["waiter", "kitchen", "manager"]
 
 
 class WaiterUpdate(BaseModel):
     """Admin edit of a staff roster entry. Any field omitted is left unchanged."""
     name: Optional[str] = None
-    username: Optional[str] = None
-
-
-class DeviceActivate(BaseModel):
-    """Manager authorizes a paired device by its code, optionally naming it and
-    assigning the current waiter (both may be set/changed later)."""
-    code: str
-    waiter_id: Optional[str] = None
-    device_name: Optional[str] = None
-
-
-class DeviceCodeRequest(BaseModel):
-    """A device asks for a pairing code before a manager activates it."""
-    device_id: str
-
-
-class DevicePoll(BaseModel):
-    """A device polls with its code until a manager activates it."""
-    device_id: str
-    code: str
-
-
-class DeviceAssign(BaseModel):
-    """Manager sets/clears the current waiter on a device and/or renames it.
-    user_id=None clears the assignment (device becomes ordering-only)."""
-    user_id: Optional[str] = None
-    device_name: Optional[str] = None
-
-
-class DeviceLogout(BaseModel):
-    """Waiter signs out on a device; the pairing is kept but marked logged-out."""
-    device_id: str
-
-
-class DeviceActivation(DBModel):
-    """A device-authorization record. Pending rows carry expires_at (TTL-purged);
-    active rows have it unset so they are never auto-deleted.
-
-    user_id / cafe_id are optional because the credential-less flow creates the
-    record before a staff member is chosen; the manager assigns them on activation."""
-    id: str = Field(default_factory=new_id)
-    user_id: Optional[str] = None
-    cafe_id: Optional[str] = None
-    device_id: str
-    code: str
-    device_name: Optional[str] = None
-    status: str = "pending"  # pending | active
-    signed_in: bool = False  # is a waiter currently signed in on this paired device
-    last_login: Optional[datetime] = None
-    last_logout: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=utcnow)
-    expires_at: Optional[datetime] = None
-    activated_by: Optional[str] = None
-    activated_at: Optional[datetime] = None

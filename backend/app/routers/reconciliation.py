@@ -13,13 +13,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from pymongo import ReturnDocument
 
-from app.core.deps import require_role
+from app.core.deps import MANAGEMENT
 from app.db.mongo import db
 from app.models.common import OrderStatus, SessionStatus, TableStatus
 
 router = APIRouter(prefix="/reconciliation", tags=["reconciliation"])
 
-_MANAGER = require_role(["owner", "superadmin"])
 _TERMINAL = [OrderStatus.completed.value, OrderStatus.cancelled.value]
 
 
@@ -46,7 +45,7 @@ def _bill_summary(b: dict) -> dict:
 
 
 @router.get("")
-async def get_conflicts(current_user: dict = Depends(_MANAGER)):
+async def get_conflicts(current_user: dict = Depends(MANAGEMENT)):
     cafe_id = current_user["cafe_id"]
 
     # (a) Tables carrying more than one open order.
@@ -97,7 +96,7 @@ class ResolveTableIn(BaseModel):
 
 
 @router.post("/tables/{table_id}/resolve")
-async def resolve_table(table_id: str, payload: ResolveTableIn, current_user: dict = Depends(_MANAGER)):
+async def resolve_table(table_id: str, payload: ResolveTableIn, current_user: dict = Depends(MANAGEMENT)):
     """Keep one order for a contested table, cancel the rest, re-point the table."""
     cafe_id = current_user["cafe_id"]
     open_orders = await db.orders.find(

@@ -30,12 +30,11 @@ async def test_empty_name_rejected(api, owner):
     assert resp.status_code == 400
 
 
-async def test_settings_require_manager(api, owner):
-    # Pair a device (staff role) and confirm it cannot edit cafe settings.
-    code = (await api.post("/api/waiters/devices/request", json={"device_id": "d-set"})).json()["code"]
-    await api.post("/api/waiters/devices/activate", json={"code": code}, headers=owner["headers"])
-    poll = await api.post("/api/waiters/devices/poll", json={"device_id": "d-set", "code": code})
-    device_headers = {"Authorization": f"Bearer {poll.json()['token']}"}
+async def test_settings_are_owner_only_for_staff(api, owner):
+    from .test_staff import _invite, _login_as
 
-    resp = await api.patch("/api/cafe", json={"name": "Hack"}, headers=device_headers)
+    invited = await _invite(api, owner["headers"], role="waiter", name="Floor Waiter")
+    waiter = await _login_as(api, invited)
+
+    resp = await api.patch("/api/cafe", json={"name": "Hack"}, headers=waiter["headers"])
     assert resp.status_code == 403

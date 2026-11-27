@@ -40,6 +40,13 @@ class Cafe(DBModel):
     # delivery on delivery orders; dine-in is exempt.
     packing_charge: float = 0.0
     delivery_charge: float = 0.0
+    # Platform-admin approval gate. Test accounts auto-approve (see register_verify);
+    # a real signup starts "pending" until a platform_admin approves it.
+    status: str = "pending"  # pending | approved | rejected
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    # Stored/editable now; no order/bill flow branches on it yet (future slice).
+    payment_policy: str = "pay_after"  # pay_first | pay_after
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -55,6 +62,16 @@ class CafeSettingsUpdate(BaseModel):
     sgst_percentage: Optional[float] = Field(default=None, ge=0)
     packing_charge: Optional[float] = Field(default=None, ge=0)
     delivery_charge: Optional[float] = Field(default=None, ge=0)
+    payment_policy: Optional[str] = None
+
+    @field_validator("payment_policy")
+    @classmethod
+    def _payment_policy(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        if v not in ("pay_first", "pay_after"):
+            raise ValueError("payment_policy must be 'pay_first' or 'pay_after'.")
+        return v
 
     @field_validator("pincode")
     @classmethod

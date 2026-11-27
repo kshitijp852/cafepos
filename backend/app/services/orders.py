@@ -4,8 +4,13 @@ The same Order document backs both modes: a dine-in order carries a real
 ``table_id`` (UUID); a counter sale leaves ``table_id`` null. The lifecycle and
 its allowed transitions are identical for both.
 
-    pending → preparing → ready → completed
-       └──────────┴──────────┴──────────────→ cancelled
+    pending → preparing → ready → served
+       └──────────┴──────────┴───────┴────→ cancelled
+
+``completed`` is reachable only by creating a bill (app/routers/bills.py), not
+through this manual transition — see update_order_status. That's what makes
+"completed" actually mean "payment settled" instead of a staff member just
+flipping a status.
 
 ``active`` is treated as an alias of ``pending`` for backward compatibility with
 orders created before the lifecycle was formalised.
@@ -18,7 +23,8 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     OrderStatus.pending.value: {OrderStatus.preparing.value, OrderStatus.cancelled.value},
     OrderStatus.active.value: {OrderStatus.preparing.value, OrderStatus.cancelled.value},
     OrderStatus.preparing.value: {OrderStatus.ready.value, OrderStatus.cancelled.value},
-    OrderStatus.ready.value: {OrderStatus.completed.value, OrderStatus.cancelled.value},
+    OrderStatus.ready.value: {OrderStatus.served.value, OrderStatus.cancelled.value},
+    OrderStatus.served.value: {OrderStatus.completed.value, OrderStatus.cancelled.value},
     OrderStatus.completed.value: set(),
     OrderStatus.cancelled.value: set(),
 }

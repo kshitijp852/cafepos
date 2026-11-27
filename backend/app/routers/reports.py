@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 
-from app.core.deps import require_user_session
+from app.core.deps import MANAGEMENT
 from app.db.mongo import db
 from app.models.common import PaymentMethod
 
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 
 @router.get("/daily")
-async def get_daily_report(report_date: Optional[str] = None, current_user: dict = Depends(require_user_session)):
+async def get_daily_report(report_date: Optional[str] = None, current_user: dict = Depends(MANAGEMENT)):
     cafe_id = current_user["cafe_id"]
     report_date = report_date or date.today().isoformat()
 
@@ -71,7 +71,7 @@ def _parse_created(value) -> Optional[datetime]:
 
 
 @router.get("/analytics")
-async def get_analytics(tz_offset: int = 0, current_user: dict = Depends(require_user_session)):
+async def get_analytics(tz_offset: int = 0, current_user: dict = Depends(MANAGEMENT)):
     """Cafe-wide analytics: today, all-time totals, payment split, top items,
     revenue trends, hour/weekday patterns, order-type + dwell distributions,
     and a per-staff leaderboard.
@@ -218,7 +218,7 @@ LAPSED_AFTER_DAYS = 45
 
 
 @router.get("/customers")
-async def get_customer_insights(tz_offset: int = 0, limit: int = 20, current_user: dict = Depends(require_user_session)):
+async def get_customer_insights(tz_offset: int = 0, limit: int = 20, current_user: dict = Depends(MANAGEMENT)):
     """Who the cafe's customers are, from the name/phone captured at settlement.
 
     Customers are identified by phone, which the settle flow normalizes to

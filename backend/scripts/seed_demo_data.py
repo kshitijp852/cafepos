@@ -86,7 +86,7 @@ async def purge(db, cafe_id: str) -> None:
 
 async def ensure_staff(db, cafe_id: str, count: int) -> list[dict]:
     existing = await db.users.find(
-        {"cafe_id": cafe_id, "role": "staff"}, {"_id": 0, "id": 1, "name": 1}
+        {"cafe_id": cafe_id, "role": "waiter"}, {"_id": 0, "id": 1, "name": 1}
     ).to_list(50)
     if len(existing) >= count:
         return existing[:count]
@@ -99,7 +99,7 @@ async def ensure_staff(db, cafe_id: str, count: int) -> list[dict]:
             "name": name,
             "username": name.split()[0].lower(),
             "phone": None,
-            "role": "staff",
+            "role": "waiter",
             "cafe_id": cafe_id,
             "pin": None,
             "is_active": True,
